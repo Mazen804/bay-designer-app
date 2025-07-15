@@ -109,24 +109,50 @@ def draw_bay_group(params):
 def create_powerpoint(figures_with_names):
     """Creates a PowerPoint presentation from a list of figures."""
     prs = Presentation()
-    for fig, name in figures_with_names:
-        slide_layout = prs.slide_layouts[5]  # Blank slide layout
-        slide = prs.slides.add_slide(slide_layout)
-        
-        title = slide.shapes.title
-        title.text = f"Design for: {name}"
+    slide_width_emu = prs.slide_width
+    slide_height_emu = prs.slide_height
 
+    for fig, name in figures_with_names:
+        # Use a blank slide layout for maximum space and control
+        blank_slide_layout = prs.slide_layouts[6]
+        slide = prs.slides.add_slide(blank_slide_layout)
+        
+        # Add a title textbox manually at the top
+        title_shape = slide.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(9), Inches(0.5))
+        title_shape.text = f"Design for: {name}"
+        
+        # Save the Matplotlib figure to a buffer
         buf = io.BytesIO()
-        fig.savefig(buf, format='png', bbox_inches='tight')
+        fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0.1)
         buf.seek(0)
         
-        # Add picture to slide, centered
-        pic_width_in = 7.5
-        pic_height_in = pic_width_in * (fig.get_figheight() / fig.get_figwidth())
-        left = Inches((prs.slide_width.inches - pic_width_in) / 2)
-        top = Inches((prs.slide_height.inches - pic_height_in) / 2)
+        # --- NEW SCALING LOGIC to fit the image on one slide ---
+        # Define the maximum available space for the image on the slide
+        margin = Inches(0.25)
+        max_width = slide_width_emu - (2 * margin)
+        # Account for title and bottom margin
+        max_height = slide_height_emu - Inches(0.75) - margin 
+
+        # Get image's original size in pixels
+        img_width_px, img_height_px = fig.get_size_inches() * fig.dpi
+        img_aspect_ratio = img_width_px / img_height_px
+
+        # Determine the final size on the slide to maintain aspect ratio
+        if (max_width / img_aspect_ratio) > max_height:
+            # If fitting to height makes it too narrow, height is the constraint
+            pic_height = max_height
+            pic_width = max_height * img_aspect_ratio
+        else:
+            # If fitting to width makes it too tall, width is the constraint
+            pic_width = max_width
+            pic_height = max_width / img_aspect_ratio
+
+        # Center the image on the slide below the title
+        left = (slide_width_emu - pic_width) / 2
+        top = Inches(0.75) + ((max_height - pic_height) / 2)
         
-        slide.shapes.add_picture(buf, left, top, width=Inches(pic_width_in))
+        slide.shapes.add_picture(buf, left, top, width=pic_width, height=pic_height)
+        # --- END NEW SCALING LOGIC ---
 
     # Save presentation to a buffer
     ppt_buf = io.BytesIO()

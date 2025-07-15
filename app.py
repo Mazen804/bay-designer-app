@@ -230,4 +230,3 @@ else:
             file_name="all_bay_designs.pptx",
             mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
         )
-

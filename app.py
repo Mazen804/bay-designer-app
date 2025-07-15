@@ -1,6 +1,7 @@
 import streamlit as st
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import io
 
 # --- Page Configuration ---
 st.set_page_config(layout="wide", page_title="Storage Bay Designer")
@@ -130,7 +131,7 @@ with st.sidebar:
         num_shelves = st.session_state.num_rows + (1 if has_top_cap else 0)
         total_shelf_h = num_shelves * shelf_thickness
         available_space = st.session_state.total_height_input - ground_clearance - total_shelf_h
-        if available_space > 0:
+        if available_space > 0 and st.session_state.num_rows > 0:
             uniform_h = available_space / st.session_state.num_rows
             # Update the session state for each level height
             for i in range(st.session_state.num_rows):
@@ -200,6 +201,7 @@ with col1:
         "bin_heights": current_bin_heights
     }
 
+    fig = None
     # Only draw if the height is positive
     if final_total_height > 0 and gross_width > 0:
         fig, net_width, bin_width = draw_bay(params)
@@ -207,12 +209,26 @@ with col1:
         st.metric("Net Width", f"{net_width:.1f} mm")
         st.metric("Calculated Bin Width", f"{bin_width:.1f} mm")
         st.metric("Final Total Height", f"{final_total_height:.1f} mm")
+        
+        # --- Download Button Logic ---
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", bbox_inches='tight', pad_inches=0.1)
+        
+        st.download_button(
+            label="Download Design",
+            data=buf,
+            file_name="bay_design.png",
+            mime="image/png"
+        )
+        # --- End Download Button Logic ---
+
     else:
         st.error("Invalid dimensions. Please check your inputs.")
-        fig = None
 
 
 with col2:
     if fig:
-        st.pyplot(fig)
+        # Use container width to make the plot fit the column (zoom out)
+        st.pyplot(fig, use_container_width=True)
+
 

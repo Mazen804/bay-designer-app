@@ -41,13 +41,13 @@ def draw_bay_group(params):
     color = params['color']
     bin_heights = params['bin_heights']
 
-    # --- Calculations (MODIFIED) ---
+    # --- Calculations ---
     # Total width of the group, assuming dividers between bays have zero thickness.
     total_group_width = (num_bays * bay_width) + (2 * side_panel_thickness)
     
     fig, ax = plt.subplots(figsize=(12, 8))
 
-    # --- Draw Structure (MODIFIED) ---
+    # --- Draw Structure ---
     structure_height = total_height - ground_clearance
     
     # Draw left-most side panel
@@ -173,11 +173,13 @@ else:
     for i, tab in enumerate(tabs):
         with tab:
             group_data = st.session_state.bay_groups[i]
-            st.header(f"Configuration for: {group_data['name']}")
             
-            # --- Configuration Controls within each tab ---
-            c1, c2, c3 = st.columns(3)
-            with c1:
+            # --- NEW LAYOUT: Controls on the left, Plot on the right ---
+            col_controls, col_plot = st.columns([1, 1.5])
+
+            with col_controls:
+                st.header(f"Configuration for: {group_data['name']}")
+                
                 st.subheader("Structure")
                 group_data['num_bays'] = st.number_input("Number of Bays in Group", min_value=1, value=group_data['num_bays'], key=f"num_bays_{i}")
                 group_data['bay_width'] = st.number_input("Width per Bay (mm)", min_value=1, value=group_data['bay_width'], key=f"bay_width_{i}")
@@ -185,12 +187,10 @@ else:
                 group_data['ground_clearance'] = st.number_input("Ground Clearance (mm)", min_value=0, value=group_data['ground_clearance'], key=f"ground_clearance_{i}")
                 group_data['has_top_cap'] = st.checkbox("Add Top Cap", value=group_data['has_top_cap'], key=f"has_top_cap_{i}")
 
-            with c2:
                 st.subheader("Layout")
                 group_data['num_rows'] = st.number_input("Shelves (Rows)", min_value=1, value=group_data['num_rows'], key=f"num_rows_{i}")
                 group_data['num_cols'] = st.number_input("Bin-Split (Columns)", min_value=1, value=group_data['num_cols'], key=f"num_cols_{i}")
                 
-                # Dynamic bin height inputs
                 st.markdown("**Individual Shelf Heights**")
                 new_bin_heights = []
                 # Ensure bin_heights list is the correct length
@@ -205,19 +205,16 @@ else:
                     new_bin_heights.append(height)
                 group_data['bin_heights'] = new_bin_heights
 
-            with c3:
                 st.subheader("Materials & Appearance")
                 group_data['shelf_thickness'] = st.number_input("Shelf & Bin-Split Thickness (mm)", min_value=1, value=group_data['shelf_thickness'], key=f"shelf_thick_{i}")
                 group_data['side_panel_thickness'] = st.number_input("Outer Side Panel Thickness (mm)", min_value=1, value=group_data['side_panel_thickness'], key=f"side_panel_thick_{i}")
                 group_data['color'] = st.color_picker("Structure Color", value=group_data['color'], key=f"color_{i}")
 
-            # --- Drawing Area ---
-            st.markdown("---")
-            st.subheader("Generated Design")
-            
-            fig = draw_bay_group(group_data)
-            all_figures.append((fig, group_data['name']))
-            st.pyplot(fig, use_container_width=True)
+            with col_plot:
+                st.subheader("Generated Design")
+                fig = draw_bay_group(group_data)
+                all_figures.append((fig, group_data['name']))
+                st.pyplot(fig, use_container_width=True)
 
     # --- Global Download Button ---
     st.sidebar.markdown("---")

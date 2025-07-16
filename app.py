@@ -40,6 +40,7 @@ def draw_bay_group(params):
     has_top_cap = params['has_top_cap']
     color = params['color']
     bin_heights = params['bin_heights']
+    zoom_factor = params.get('zoom', 1.0)
 
     # --- Calculations ---
     total_group_width = (num_bays * bay_width) + (2 * side_panel_thickness)
@@ -109,8 +110,9 @@ def draw_bay_group(params):
     # --- Final Touches ---
     ax.set_aspect('equal', adjustable='box')
     ax.axis('off')
-    ax.set_xlim(-dim_offset_x * 4, total_group_width + dim_offset_x * 4)
-    ax.set_ylim(-dim_offset_y * 2, total_height + dim_offset_y * 2)
+    # Use zoom factor to adjust the view
+    ax.set_xlim(-dim_offset_x * 4 * zoom_factor, total_group_width + dim_offset_x * 4 * zoom_factor)
+    ax.set_ylim(-dim_offset_y * 2 * zoom_factor, total_height + dim_offset_y * 2 * zoom_factor)
     
     return fig
 
@@ -158,7 +160,8 @@ if 'bay_groups' not in st.session_state:
         "name": "Group A", "num_bays": 2, "bay_width": 1050, "total_height": 2000,
         "ground_clearance": 50, "shelf_thickness": 18, "side_panel_thickness": 18,
         "num_cols": 4, "num_rows": 5, "has_top_cap": True, "color": "#4A90E2",
-        "bin_heights": [350.0] * 5
+        "bin_heights": [350.0] * 5,
+        "zoom": 1.0
     }]
 
 # --- Sidebar Controls ---
@@ -217,6 +220,8 @@ st.sidebar.subheader("Materials & Appearance")
 group_data['shelf_thickness'] = st.sidebar.number_input("Shelf Thickness (mm)", min_value=1, value=group_data['shelf_thickness'], key=f"shelf_thick_{active_group_idx}")
 group_data['side_panel_thickness'] = st.sidebar.number_input("Outer Side Panel Thickness (mm)", min_value=1, value=group_data['side_panel_thickness'], key=f"side_panel_thick_{active_group_idx}")
 group_data['color'] = st.sidebar.color_picker("Structure Color", value=group_data['color'], key=f"color_{active_group_idx}")
+group_data['zoom'] = st.sidebar.slider("Zoom", 1.0, 5.0, group_data.get('zoom', 1.0), 0.1, key=f"zoom_{active_group_idx}", help="Increase to zoom out and see more area around the design.")
+
 
 # --- Main Area for Drawing ---
 st.header(f"Generated Design for: {group_data['name']}")

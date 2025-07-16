@@ -35,6 +35,7 @@ def draw_bay_group(params):
     ground_clearance = params['ground_clearance']
     shelf_thickness = params['shelf_thickness']
     side_panel_thickness = params['side_panel_thickness']
+    bin_split_thickness = params['bin_split_thickness'] # New parameter
     num_cols = params['num_cols'] # This is the bin-split
     num_rows = params['num_rows'] # This is the shelves
     has_top_cap = params['has_top_cap']
@@ -57,14 +58,16 @@ def draw_bay_group(params):
     # Loop through each bay in the group
     for bay_idx in range(num_bays):
         net_width_per_bay = bay_width
-        total_internal_dividers = (num_cols - 1) * shelf_thickness
+        # **FIXED**: Use bin_split_thickness for vertical divider calculation
+        total_internal_dividers = (num_cols - 1) * bin_split_thickness
         bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
 
         bin_start_x = current_x
         if num_cols > 1:
             for i in range(1, num_cols):
-                split_x = bin_start_x + (i * bin_width) + ((i-1) * shelf_thickness)
-                ax.add_patch(patches.Rectangle((split_x, ground_clearance), shelf_thickness, structure_height, facecolor=color))
+                # **FIXED**: Use bin_split_thickness for positioning and drawing
+                split_x = bin_start_x + (i * bin_width) + ((i-1) * bin_split_thickness)
+                ax.add_patch(patches.Rectangle((split_x, ground_clearance), bin_split_thickness, structure_height, facecolor=color))
         
         if bay_idx < num_bays - 1:
              divider_x = current_x + bay_width
@@ -80,6 +83,7 @@ def draw_bay_group(params):
     dim_offset_x = 0.05 * total_group_width
 
     for i in range(num_rows):
+        # **FIXED**: Horizontal shelves use shelf_thickness
         ax.add_patch(patches.Rectangle((0, current_y), total_group_width, shelf_thickness, facecolor=color))
         shelf_top_y = current_y + shelf_thickness
         
@@ -159,6 +163,7 @@ if 'bay_groups' not in st.session_state:
     st.session_state.bay_groups = [{
         "name": "Group A", "num_bays": 2, "bay_width": 1050, "total_height": 2000,
         "ground_clearance": 50, "shelf_thickness": 18, "side_panel_thickness": 18,
+        "bin_split_thickness": 18, # New parameter
         "num_cols": 4, "num_rows": 5, "has_top_cap": True, "color": "#4A90E2",
         "bin_heights": [350.0] * 5,
         "zoom": 1.0
@@ -218,6 +223,8 @@ group_data['bin_heights'] = new_bin_heights
 
 st.sidebar.subheader("Materials & Appearance")
 group_data['shelf_thickness'] = st.sidebar.number_input("Shelf Thickness (mm)", min_value=1, value=group_data['shelf_thickness'], key=f"shelf_thick_{active_group_idx}")
+# **FIXED**: Added new input for bin-split thickness
+group_data['bin_split_thickness'] = st.sidebar.number_input("Bin-Split Thickness (mm)", min_value=1, value=group_data.get('bin_split_thickness', 18), key=f"binsplit_thick_{active_group_idx}")
 group_data['side_panel_thickness'] = st.sidebar.number_input("Outer Side Panel Thickness (mm)", min_value=1, value=group_data['side_panel_thickness'], key=f"side_panel_thick_{active_group_idx}")
 group_data['color'] = st.sidebar.color_picker("Structure Color", value=group_data['color'], key=f"color_{active_group_idx}")
 group_data['zoom'] = st.sidebar.slider("Zoom", 1.0, 5.0, group_data.get('zoom', 1.0), 0.1, key=f"zoom_{active_group_idx}", help="Increase to zoom out and see more area around the design.")

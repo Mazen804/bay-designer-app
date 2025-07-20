@@ -221,7 +221,7 @@ def recalculate_total_height():
     
     active_group['total_height'] = total_net_bin_h + total_shelf_h + active_group['ground_clearance']
 
-# --- Configuration Inputs (FIXED for data types) ---
+# --- Configuration Inputs ---
 st.sidebar.subheader("Structure")
 group_data['num_bays'] = st.sidebar.number_input("Number of Bays in Group", min_value=1, value=int(group_data['num_bays']), key=f"num_bays_{active_group_idx}")
 group_data['bay_width'] = st.sidebar.number_input("Width per Bay (mm)", min_value=1.0, value=float(group_data['bay_width']), key=f"bay_width_{active_group_idx}")
@@ -239,7 +239,8 @@ if len(group_data['bin_heights']) != group_data['num_rows']:
 
 for j in range(group_data['num_rows']):
     level_name = chr(65 + j) # Level A, B, C...
-    st.number_input(f"Level {level_name} Net Height", min_value=1.0, value=float(group_data['bin_heights'][j]), key=f"level_{active_group_idx}_{j}", on_change=recalculate_total_height)
+    # **FIXED**: Added st.sidebar to this input
+    st.sidebar.number_input(f"Level {level_name} Net Height", min_value=1.0, value=float(group_data['bin_heights'][j]), key=f"level_{active_group_idx}_{j}", on_change=recalculate_total_height)
 
 st.sidebar.subheader("Materials & Appearance")
 group_data['shelf_thickness'] = st.sidebar.number_input("Shelf Thickness (mm)", min_value=1.0, value=float(group_data['shelf_thickness']), key=f"shelf_thick_{active_group_idx}", on_change=distribute_total_height)

@@ -105,6 +105,23 @@ def draw_bay_group(params):
     if has_top_cap:
         ax.add_patch(patches.Rectangle((0, total_height - shelf_thickness), total_group_width, shelf_thickness, facecolor=color))
 
+    # --- Draw Bin Width Dimensions for Level A ---
+    if num_cols > 0 and ground_clearance > 20: # Check if there's enough space
+        dim_y_pos = ground_clearance / 2
+        loop_current_x = side_panel_thickness
+        for bay_idx in range(num_bays):
+            net_width_per_bay = bay_width
+            total_internal_dividers = (num_cols - 1) * bin_split_thickness
+            bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
+            
+            bin_start_x = loop_current_x
+            for i in range(num_cols):
+                dim_start_x = bin_start_x + (i * (bin_width + bin_split_thickness))
+                dim_end_x = dim_start_x + bin_width
+                draw_dimension_line(ax, dim_start_x, dim_y_pos, dim_end_x, dim_y_pos, f"{bin_width:.1f}", offset=-10, color='#3b82f6')
+            
+            loop_current_x += bay_width
+
     # --- Draw Main Dimension Lines ---
     dim_offset_y = 0.05 * total_height
     draw_dimension_line(ax, 0, -dim_offset_y, total_group_width, -dim_offset_y, f"Total Group Width: {total_group_width:.0f} mm", offset=10)
@@ -239,7 +256,6 @@ if len(group_data['bin_heights']) != group_data['num_rows']:
 
 for j in range(group_data['num_rows']):
     level_name = chr(65 + j) # Level A, B, C...
-    # **FIXED**: Added st.sidebar to this input
     st.sidebar.number_input(f"Level {level_name} Net Height", min_value=1.0, value=float(group_data['bin_heights'][j]), key=f"level_{active_group_idx}_{j}", on_change=recalculate_total_height)
 
 st.sidebar.subheader("Materials & Appearance")
@@ -273,3 +289,4 @@ if all_figures:
         file_name="all_bay_designs.pptx",
         mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
     )
+

@@ -159,9 +159,9 @@ def create_powerpoint(figures_with_names):
 # --- Initialize Session State ---
 if 'bay_groups' not in st.session_state:
     st.session_state.bay_groups = [{
-        "name": "Group A", "num_bays": 2, "bay_width": 1050, "total_height": 2000,
-        "ground_clearance": 50, "shelf_thickness": 18, "side_panel_thickness": 18,
-        "bin_split_thickness": 18,
+        "name": "Group A", "num_bays": 2, "bay_width": 1050.0, "total_height": 2000.0,
+        "ground_clearance": 50.0, "shelf_thickness": 18.0, "side_panel_thickness": 18.0,
+        "bin_split_thickness": 18.0,
         "num_cols": 4, "num_rows": 5, "has_top_cap": True, "color": "#4A90E2",
         "bin_heights": [350.0] * 5,
         "zoom": 1.0
@@ -193,7 +193,7 @@ group_data = st.session_state.bay_groups[active_group_idx]
 
 st.sidebar.header(f"Configuration for: {group_data['name']}")
 
-# --- Dynamic Height Calculation Callbacks (FIXED) ---
+# --- Dynamic Height Calculation Callbacks ---
 def distribute_total_height():
     active_group = st.session_state.bay_groups[active_group_idx]
     num_shelves_for_calc = active_group['num_rows'] + (1 if active_group['has_top_cap'] else 0)
@@ -203,17 +203,15 @@ def distribute_total_height():
     if available_space > 0 and active_group['num_rows'] > 0:
         uniform_net_h = available_space / active_group['num_rows']
         active_group['bin_heights'] = [uniform_net_h] * active_group['num_rows']
-        # Update the individual session state keys to reflect the change
         for j in range(active_group['num_rows']):
             st.session_state[f"level_{active_group_idx}_{j}"] = uniform_net_h
 
 def recalculate_total_height():
     active_group = st.session_state.bay_groups[active_group_idx]
-    # Rebuild the bin_heights list from the individual session state keys
     current_bin_heights = []
     for j in range(active_group['num_rows']):
         key = f"level_{active_group_idx}_{j}"
-        current_bin_heights.append(st.session_state.get(key, 0))
+        current_bin_heights.append(st.session_state.get(key, 0.0))
     
     active_group['bin_heights'] = current_bin_heights
     total_net_bin_h = sum(current_bin_heights)
@@ -221,33 +219,32 @@ def recalculate_total_height():
     num_shelves_for_calc = active_group['num_rows'] + (1 if active_group['has_top_cap'] else 0)
     total_shelf_h = num_shelves_for_calc * active_group['shelf_thickness']
     
-    # Update the total height in the main dictionary
     active_group['total_height'] = total_net_bin_h + total_shelf_h + active_group['ground_clearance']
 
-# --- Configuration Inputs ---
+# --- Configuration Inputs (FIXED for data types) ---
 st.sidebar.subheader("Structure")
-group_data['num_bays'] = st.sidebar.number_input("Number of Bays in Group", min_value=1, value=group_data['num_bays'], key=f"num_bays_{active_group_idx}")
-group_data['bay_width'] = st.sidebar.number_input("Width per Bay (mm)", min_value=1, value=group_data['bay_width'], key=f"bay_width_{active_group_idx}")
-group_data['total_height'] = st.sidebar.number_input("Total Height (mm)", min_value=1, value=group_data['total_height'], key=f"total_height_{active_group_idx}", on_change=distribute_total_height)
-group_data['ground_clearance'] = st.sidebar.number_input("Ground Clearance (mm)", min_value=0, value=group_data['ground_clearance'], key=f"ground_clearance_{active_group_idx}", on_change=distribute_total_height)
+group_data['num_bays'] = st.sidebar.number_input("Number of Bays in Group", min_value=1, value=int(group_data['num_bays']), key=f"num_bays_{active_group_idx}")
+group_data['bay_width'] = st.sidebar.number_input("Width per Bay (mm)", min_value=1.0, value=float(group_data['bay_width']), key=f"bay_width_{active_group_idx}")
+group_data['total_height'] = st.sidebar.number_input("Total Height (mm)", min_value=1.0, value=float(group_data['total_height']), key=f"total_height_{active_group_idx}", on_change=distribute_total_height)
+group_data['ground_clearance'] = st.sidebar.number_input("Ground Clearance (mm)", min_value=0.0, value=float(group_data['ground_clearance']), key=f"ground_clearance_{active_group_idx}", on_change=distribute_total_height)
 group_data['has_top_cap'] = st.sidebar.checkbox("Add Top Cap", value=group_data['has_top_cap'], key=f"has_top_cap_{active_group_idx}", on_change=recalculate_total_height)
 
 st.sidebar.subheader("Layout")
-group_data['num_rows'] = st.sidebar.number_input("Shelves (Rows)", min_value=1, value=group_data['num_rows'], key=f"num_rows_{active_group_idx}")
-group_data['num_cols'] = st.sidebar.number_input("Bin-Split (Columns)", min_value=1, value=group_data['num_cols'], key=f"num_cols_{active_group_idx}")
+group_data['num_rows'] = st.sidebar.number_input("Shelves (Rows)", min_value=1, value=int(group_data['num_rows']), key=f"num_rows_{active_group_idx}")
+group_data['num_cols'] = st.sidebar.number_input("Bin-Split (Columns)", min_value=1, value=int(group_data['num_cols']), key=f"num_cols_{active_group_idx}")
 
 st.sidebar.markdown("**Individual Net Bin Heights**")
 if len(group_data['bin_heights']) != group_data['num_rows']:
-    distribute_total_height() # Recalculate if number of rows changes
+    distribute_total_height()
 
 for j in range(group_data['num_rows']):
     level_name = chr(65 + j) # Level A, B, C...
-    st.number_input(f"Level {level_name} Net Height", min_value=1.0, value=group_data['bin_heights'][j], key=f"level_{active_group_idx}_{j}", on_change=recalculate_total_height)
+    st.number_input(f"Level {level_name} Net Height", min_value=1.0, value=float(group_data['bin_heights'][j]), key=f"level_{active_group_idx}_{j}", on_change=recalculate_total_height)
 
 st.sidebar.subheader("Materials & Appearance")
-group_data['shelf_thickness'] = st.sidebar.number_input("Shelf Thickness (mm)", min_value=1, value=group_data['shelf_thickness'], key=f"shelf_thick_{active_group_idx}", on_change=distribute_total_height)
-group_data['bin_split_thickness'] = st.sidebar.number_input("Bin-Split Thickness (mm)", min_value=1, value=group_data.get('bin_split_thickness', 18), key=f"binsplit_thick_{active_group_idx}")
-group_data['side_panel_thickness'] = st.sidebar.number_input("Outer Side Panel Thickness (mm)", min_value=1, value=group_data['side_panel_thickness'], key=f"side_panel_thick_{active_group_idx}")
+group_data['shelf_thickness'] = st.sidebar.number_input("Shelf Thickness (mm)", min_value=1.0, value=float(group_data['shelf_thickness']), key=f"shelf_thick_{active_group_idx}", on_change=distribute_total_height)
+group_data['bin_split_thickness'] = st.sidebar.number_input("Bin-Split Thickness (mm)", min_value=1.0, value=float(group_data.get('bin_split_thickness', 18.0)), key=f"binsplit_thick_{active_group_idx}")
+group_data['side_panel_thickness'] = st.sidebar.number_input("Outer Side Panel Thickness (mm)", min_value=1.0, value=float(group_data['side_panel_thickness']), key=f"side_panel_thick_{active_group_idx}")
 group_data['color'] = st.sidebar.color_picker("Structure Color", value=group_data['color'], key=f"color_{active_group_idx}")
 group_data['zoom'] = st.sidebar.slider("Zoom", 1.0, 5.0, group_data.get('zoom', 1.0), 0.1, key=f"zoom_{active_group_idx}", help="Increase to zoom out and see more area around the design.")
 

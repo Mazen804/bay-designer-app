@@ -5,7 +5,7 @@ import io
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
-from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE
+from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.enum.shapes import MSO_SHAPE
 
 # --- Page Configuration ---
@@ -159,12 +159,14 @@ def create_editable_powerpoint(bay_groups):
         bin_split_thickness = shelf_thickness
 
         # --- Define Drawing Area and Scale on Slide ---
-        canvas_left, canvas_top, canvas_width, canvas_height = Inches(1.5), Inches(1), Inches(7), Inches(6)
+        canvas_left, canvas_top, canvas_width, canvas_height = Inches(1.5), Inches(1), Inches(7), Inches(5.5)
         total_group_width = (num_bays * bay_width) + (2 * side_panel_thickness)
-        scale = min(canvas_width / total_group_width, canvas_height / total_height)
+        scale = min(canvas_width / (total_group_width + 400), canvas_height / (total_height + 200)) # Add padding for dimensions
+
+        def pt_to_emu(points):
+            return int(points * 12700)
 
         def add_shape(left_mm, top_mm, width_mm, height_mm, color_hex):
-            # **FIXED**: Y-coordinate is inverted for PowerPoint (top-left origin)
             left = canvas_left + left_mm * scale
             top = canvas_top + (total_height - top_mm - height_mm) * scale
             width = width_mm * scale
@@ -175,11 +177,30 @@ def create_editable_powerpoint(bay_groups):
             shape.line.fill.background()
             return shape
         
-        def add_text(left_mm, top_mm, text, size=8):
-            textbox = slide.shapes.add_textbox(canvas_left + left_mm * scale, canvas_top + (total_height - top_mm) * scale, Inches(1), Inches(0.1))
-            p = textbox.text_frame.paragraphs[0]
-            p.text = text
-            p.font.size = Pt(size)
+        def add_dimension(start_x, start_y, end_x, end_y, text, is_vertical=False, offset_mm=50):
+            # Line
+            line = slide.shapes.add_connector(1, start_x, start_y, end_x, end_y) # 1 = line
+            line.line.fill.solid()
+            line.line.fill.fore_color.rgb = RGBColor(0,0,0)
+            
+            # Arrows
+            line.line.begin_arrow_type = 2 # 2 = triangle arrow
+            line.line.end_arrow_type = 2
+
+            # Text
+            if is_vertical:
+                text_left = start_x + pt_to_emu(5)
+                text_top = start_y + (end_y - start_y) / 2
+                textbox = slide.shapes.add_textbox(text_left, text_top, Inches(0.5), Inches(0.5))
+                textbox.rotation = 270.0
+            else:
+                text_left = start_x + (end_x - start_x) / 2
+                text_top = start_y - pt_to_emu(12)
+                textbox = slide.shapes.add_textbox(text_left, text_top, Inches(0.5), Inches(0.5))
+            
+            textbox.text_frame.text = text
+            textbox.text_frame.paragraphs[0].font.size = Pt(8)
+            textbox.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
             textbox.text_frame.auto_size = MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
 
         # --- Draw Structure using PPTX Shapes ---
@@ -198,31 +219,51 @@ def create_editable_powerpoint(bay_groups):
                     split_x_mm = bin_start_x_mm + (i * bin_width) + ((i-1) * bin_split_thickness)
                     add_shape(split_x_mm, ground_clearance, bin_split_thickness, structure_height, color_hex)
             
-            # Add bin width text
+            # Add bin width dimensions
             for i in range(num_cols):
-                text_x = bin_start_x_mm + (i * (bin_width + bin_split_thickness)) + (bin_width / 2)
-                add_text(text_x, total_height + 50, f"{bin_width:.1f}")
+                dim_start_x = canvas_left + (bin_start_x_mm + i * (bin_width + bin_split_thickness)) * scale
+                dim_end_x = dim_start_x + (bin_width * scale)
+                dim_y = canvas_top - pt_to_emu(20)
+                add_dimension(dim_start_x, dim_y, dim_end_x, dim_y, f"{bin_width:.1f}")
 
             current_x_mm += bay_width
 
         add_shape(current_x_mm, 0, side_panel_thickness, total_height, color_hex) # Right panel
 
-        # Horizontal shelves and height text
+        # Horizontal shelves and height dimensions
         current_y_mm = ground_clearance
         for i in range(num_rows):
-            add_shape(0, current_y_mm, total_group_width, shelf_thickness, color_hex)
-            current_y_mm += shelf_thickness
+            shelf_bottom_y = current_y_mm
+            add_shape(0, shelf_bottom_y, total_group_width, shelf_thickness, color_hex)
+            shelf_top_y = shelf_bottom_y + shelf_thickness
+            
             if i < len(bin_heights):
                 net_bin_h = bin_heights[i]
-                add_text(total_group_width + 50, current_y_mm + (net_bin_h / 2), f"{net_bin_h:.1f}")
-                current_y_mm += net_bin_h
+                pitch_h = net_bin_h + shelf_thickness
+
+                # Net height dimension
+                dim_start_y = canvas_top + (total_height - (shelf_top_y + net_bin_h)) * scale
+                dim_end_y = canvas_top + (total_height - shelf_top_y) * scale
+                dim_x = canvas_left + (total_group_width + 50) * scale
+                add_dimension(dim_x, dim_start_y, dim_x, dim_end_y, f"{net_bin_h:.1f}", is_vertical=True)
+                
+                # Pitch height dimension
+                pitch_dim_start_y = canvas_top + (total_height - (shelf_bottom_y + pitch_h)) * scale
+                pitch_dim_end_y = canvas_top + (total_height - shelf_bottom_y) * scale
+                pitch_dim_x = canvas_left + (total_group_width + 150) * scale
+                add_dimension(pitch_dim_x, pitch_dim_start_y, pitch_dim_x, pitch_dim_end_y, f"{pitch_h:.1f}", is_vertical=True)
+
+                current_y_mm += shelf_thickness + net_bin_h
 
         if has_top_cap:
             add_shape(0, total_height - shelf_thickness, total_group_width, shelf_thickness, color_hex)
 
         # Add total dimension text
-        add_text(total_group_width / 2, -50, f"Total Width: {total_group_width:.0f} mm")
-        add_text(-200, total_height / 2, f"Total Height: {total_height:.0f} mm")
+        total_w_y = canvas_top + canvas_height + pt_to_emu(20)
+        add_dimension(canvas_left, total_w_y, canvas_left + total_group_width * scale, total_w_y, f"Total Width: {total_group_width:.0f} mm")
+        
+        total_h_x = canvas_left - pt_to_emu(40)
+        add_dimension(total_h_x, canvas_top, total_h_x, canvas_top + total_height * scale, f"Total Height: {total_height:.0f} mm", is_vertical=True)
 
     ppt_buf = io.BytesIO()
     prs.save(ppt_buf)

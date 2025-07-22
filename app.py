@@ -35,7 +35,6 @@ def draw_bay_group(params):
     ground_clearance = params['ground_clearance']
     shelf_thickness = params['shelf_thickness']
     side_panel_thickness = params['side_panel_thickness']
-    bin_split_thickness = params['bin_split_thickness']
     num_cols = params['num_cols']
     num_rows = params['num_rows']
     has_top_cap = params['has_top_cap']
@@ -56,14 +55,16 @@ def draw_bay_group(params):
 
     for bay_idx in range(num_bays):
         net_width_per_bay = bay_width
-        total_internal_dividers = (num_cols - 1) * bin_split_thickness
+        # **FIXED**: Vertical dividers now use shelf_thickness
+        total_internal_dividers = (num_cols - 1) * shelf_thickness
         bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
 
         bin_start_x = current_x
         if num_cols > 1:
             for i in range(1, num_cols):
-                split_x = bin_start_x + (i * bin_width) + ((i-1) * bin_split_thickness)
-                ax.add_patch(patches.Rectangle((split_x, ground_clearance), bin_split_thickness, structure_height, facecolor=color))
+                # **FIXED**: Vertical dividers now use shelf_thickness
+                split_x = bin_start_x + (i * bin_width) + ((i-1) * shelf_thickness)
+                ax.add_patch(patches.Rectangle((split_x, ground_clearance), shelf_thickness, structure_height, facecolor=color))
         
         if bay_idx < num_bays - 1:
              divider_x = current_x + bay_width
@@ -104,22 +105,23 @@ def draw_bay_group(params):
 
     # --- Draw Main Dimension Lines ---
     dim_offset_y = 0.05 * total_height
-    draw_dimension_line(ax, 0, -dim_offset_y, total_group_width, -dim_offset_y, f"Total Group Width: {total_group_width:.0f} mm", offset=10)
+    draw_dimension_line(ax, 0, -dim_offset_y * 2, total_group_width, -dim_offset_y * 2, f"Total Group Width: {total_group_width:.0f} mm", offset=10)
     draw_dimension_line(ax, -dim_offset_x * 4, 0, -dim_offset_x * 4, total_height, f"Total Height: {total_height:.0f} mm", is_vertical=True, offset=10)
 
-    # --- Draw Bin Width Dimensions below the bay ---
+    # --- Draw Bin Width Dimensions above the bay ---
     if num_cols > 0:
-        # **FIXED**: Position the dimension line below the main total width line for clarity
-        dim_y_pos = -dim_offset_y * 1.5 
+        dim_y_pos = total_height + dim_offset_y
         loop_current_x = side_panel_thickness
         for bay_idx in range(num_bays):
             net_width_per_bay = bay_width
-            total_internal_dividers = (num_cols - 1) * bin_split_thickness
+            # **FIXED**: Use shelf_thickness for calculation
+            total_internal_dividers = (num_cols - 1) * shelf_thickness
             bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
             
             bin_start_x = loop_current_x
             for i in range(num_cols):
-                dim_start_x = bin_start_x + (i * (bin_width + bin_split_thickness))
+                # **FIXED**: Use shelf_thickness for positioning
+                dim_start_x = bin_start_x + (i * (bin_width + shelf_thickness))
                 dim_end_x = dim_start_x + bin_width
                 draw_dimension_line(ax, dim_start_x, dim_y_pos, dim_end_x, dim_y_pos, f"{bin_width:.1f}", offset=10, color='#3b82f6')
             
@@ -176,7 +178,6 @@ if 'bay_groups' not in st.session_state:
     st.session_state.bay_groups = [{
         "name": "Group A", "num_bays": 2, "bay_width": 1050.0, "total_height": 2000.0,
         "ground_clearance": 50.0, "shelf_thickness": 18.0, "side_panel_thickness": 18.0,
-        "bin_split_thickness": 18.0,
         "num_cols": 4, "num_rows": 5, "has_top_cap": True, "color": "#4A90E2",
         "bin_heights": [350.0] * 5,
         "zoom": 1.0
@@ -258,7 +259,6 @@ for j in range(group_data['num_rows']):
 
 st.sidebar.subheader("Materials & Appearance")
 group_data['shelf_thickness'] = st.sidebar.number_input("Shelf Thickness (mm)", min_value=1.0, value=float(group_data['shelf_thickness']), key=f"shelf_thick_{active_group_idx}", on_change=distribute_total_height)
-group_data['bin_split_thickness'] = st.sidebar.number_input("Bin-Split Thickness (mm)", min_value=1.0, value=float(group_data.get('bin_split_thickness', 18.0)), key=f"binsplit_thick_{active_group_idx}")
 group_data['side_panel_thickness'] = st.sidebar.number_input("Outer Side Panel Thickness (mm)", min_value=1.0, value=float(group_data['side_panel_thickness']), key=f"side_panel_thick_{active_group_idx}")
 group_data['color'] = st.sidebar.color_picker("Structure Color", value=group_data['color'], key=f"color_{active_group_idx}")
 group_data['zoom'] = st.sidebar.slider("Zoom", 1.0, 5.0, group_data.get('zoom', 1.0), 0.1, key=f"zoom_{active_group_idx}", help="Increase to zoom out and see more area around the design.")
@@ -266,6 +266,8 @@ group_data['zoom'] = st.sidebar.slider("Zoom", 1.0, 5.0, group_data.get('zoom', 
 
 # --- Main Area for Drawing ---
 st.header(f"Generated Design for: {group_data['name']}")
+# Pass shelf_thickness as bin_split_thickness to the drawing function
+group_data['bin_split_thickness'] = group_data['shelf_thickness']
 fig = draw_bay_group(group_data)
 st.pyplot(fig, use_container_width=True)
 
@@ -275,6 +277,7 @@ st.sidebar.header("Download All Designs")
 
 all_figures = []
 for group in st.session_state.bay_groups:
+    group['bin_split_thickness'] = group['shelf_thickness'] # Ensure this is set for all groups
     fig_to_download = draw_bay_group(group)
     all_figures.append((fig_to_download, group['name']))
     plt.close(fig_to_download)

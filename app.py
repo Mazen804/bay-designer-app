@@ -49,7 +49,7 @@ def draw_bay_group(params):
     color = params['color']
     bin_heights = params['bin_heights']
     zoom_factor = params.get('zoom', 1.0)
-    bin_split_thickness = shelf_thickness # Vertical dividers use shelf thickness
+    bin_split_thickness = shelf_thickness
 
     # --- Calculations ---
     total_group_width = (num_bays * bay_width) + (2 * side_panel_thickness)
@@ -134,7 +134,11 @@ def draw_bay_group(params):
 
     # --- Final Touches ---
     ax.set_aspect('equal', adjustable='box')
-    ax.set_xlim(-dim_offset_x * 6 * zoom_factor, total_group_width + pitch_offset_x * 2 * zoom_factor)
+    # **FIXED**: Stabilize the view by centering on the core bay structure.
+    core_width = num_bays * bay_width
+    view_center = side_panel_thickness + (core_width / 2)
+    view_span = core_width * 1.5 # A consistent viewing width based on the bays
+    ax.set_xlim((view_center - view_span / 2) * zoom_factor, (view_center + view_span / 2) * zoom_factor)
     ax.set_ylim(-dim_offset_y * 3 * zoom_factor, total_height + dim_offset_y * 2 * zoom_factor)
     
     return fig
@@ -346,7 +350,6 @@ num_shelves_for_calc = group_data['num_rows'] + (1 if group_data['has_top_cap'] 
 total_shelf_h = num_shelves_for_calc * group_data['shelf_thickness']
 calculated_total_height = total_net_bin_h + total_shelf_h + group_data['ground_clearance']
 st.sidebar.metric("Calculated Total Height", f"{calculated_total_height:.1f} mm")
-# **FIXED**: The drawing and export should always use the dynamically calculated height
 group_data['total_height'] = calculated_total_height 
 
 # --- Main Area for Drawing ---
@@ -354,27 +357,23 @@ st.header(f"Generated Design for: {group_data['name']}")
 fig = draw_bay_group(group_data)
 st.pyplot(fig, use_container_width=True)
 
-# --- Global Download Button ---
+# --- Global Download Button (FIXED) ---
 st.sidebar.markdown("---")
 st.sidebar.header("Download All Designs")
 
-# Create a placeholder for the download button
-download_button_placeholder = st.sidebar.empty()
+# Recalculate all group heights before creating the buffer
+for group in st.session_state.bay_groups:
+    total_net_bin_h = sum(group['bin_heights'])
+    num_shelves_for_calc = group['num_rows'] + (1 if group['has_top_cap'] else 0)
+    total_shelf_h = num_shelves_for_calc * group['shelf_thickness']
+    group['total_height'] = total_net_bin_h + total_shelf_h + group['ground_clearance']
 
-if st.sidebar.button("Generate PPTX"):
-    # Recalculate all group heights before creating the buffer
-    for group in st.session_state.bay_groups:
-        total_net_bin_h = sum(group['bin_heights'])
-        num_shelves_for_calc = group['num_rows'] + (1 if group['has_top_cap'] else 0)
-        total_shelf_h = num_shelves_for_calc * group['shelf_thickness']
-        group['total_height'] = total_net_bin_h + total_shelf_h + group['ground_clearance']
+ppt_buffer = create_editable_powerpoint(st.session_state.bay_groups)
 
-    ppt_buffer = create_editable_powerpoint(st.session_state.bay_groups)
-    
-    download_button_placeholder.download_button(
-        label="Download Now",
-        data=ppt_buffer,
-        file_name="all_bay_designs.pptx",
-        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-    )
+st.sidebar.download_button(
+    label="Generate & Download PPTX",
+    data=ppt_buffer,
+    file_name="all_bay_designs.pptx",
+    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+)
 

@@ -17,6 +17,11 @@ st.markdown("Use the sidebar to manage and configure your bay groups. The design
 
 # --- Helper Functions ---
 
+def hex_to_rgb(hex_color):
+    """Converts a hex color string to an RGB tuple."""
+    hex_color = hex_color.lstrip('#')
+    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
 def draw_dimension_line(ax, x1, y1, x2, y2, text, is_vertical=False, offset=10, color='black', fontsize=9):
     """Draws a dimension line with arrows and text on the matplotlib axis."""
     ax.plot([x1, x2], [y1, y2], color=color, lw=1)
@@ -38,13 +43,13 @@ def draw_bay_group(params):
     ground_clearance = params['ground_clearance']
     shelf_thickness = params['shelf_thickness']
     side_panel_thickness = params['side_panel_thickness']
-    bin_split_thickness = params['bin_split_thickness']
     num_cols = params['num_cols']
     num_rows = params['num_rows']
     has_top_cap = params['has_top_cap']
     color = params['color']
     bin_heights = params['bin_heights']
     zoom_factor = params.get('zoom', 1.0)
+    bin_split_thickness = shelf_thickness # Vertical dividers use shelf thickness
 
     # --- Calculations ---
     total_group_width = (num_bays * bay_width) + (2 * side_panel_thickness)
@@ -129,10 +134,7 @@ def draw_bay_group(params):
 
     # --- Final Touches ---
     ax.set_aspect('equal', adjustable='box')
-    # **FIXED**: Base the view on the core width of the bays, not the total width, to stabilize the view.
-    core_width = num_bays * bay_width
-    padding_x = core_width * 0.2 + side_panel_thickness # Add padding plus space for the panels
-    ax.set_xlim((-padding_x) * zoom_factor, (core_width + padding_x) * zoom_factor)
+    ax.set_xlim(-dim_offset_x * 6 * zoom_factor, total_group_width + pitch_offset_x * 2 * zoom_factor)
     ax.set_ylim(-dim_offset_y * 3 * zoom_factor, total_height + dim_offset_y * 2 * zoom_factor)
     
     return fig
@@ -148,12 +150,13 @@ def create_editable_powerpoint(bay_groups):
         title_shape.text = f"Design for: {group_data['name']}"
 
         # --- Unpack Parameters ---
-        num_bays, bay_width, total_height, ground_clearance, shelf_thickness, side_panel_thickness, num_cols, num_rows, has_top_cap, color_hex, bin_heights, bin_split_thickness = (
+        num_bays, bay_width, total_height, ground_clearance, shelf_thickness, side_panel_thickness, num_cols, num_rows, has_top_cap, color_hex, bin_heights = (
             group_data['num_bays'], group_data['bay_width'], group_data['total_height'],
             group_data['ground_clearance'], group_data['shelf_thickness'], group_data['side_panel_thickness'],
             group_data['num_cols'], group_data['num_rows'], group_data['has_top_cap'],
-            group_data['color'], group_data['bin_heights'], group_data['bin_split_thickness']
+            group_data['color'], group_data['bin_heights']
         )
+        bin_split_thickness = shelf_thickness
 
         # --- Define Drawing Area and Scale on Slide ---
         canvas_left, canvas_top, canvas_width, canvas_height = Inches(1.5), Inches(1), Inches(7), Inches(5.5)
@@ -264,7 +267,6 @@ if 'bay_groups' not in st.session_state:
     st.session_state.bay_groups = [{
         "name": "Group A", "num_bays": 2, "bay_width": 1050.0, "total_height": 2000.0,
         "ground_clearance": 50.0, "shelf_thickness": 18.0, "side_panel_thickness": 18.0,
-        "bin_split_thickness": 18.0,
         "num_cols": 4, "num_rows": 5, "has_top_cap": True, "color": "#4A90E2",
         "bin_heights": [350.0] * 5,
         "zoom": 1.0
@@ -344,32 +346,35 @@ num_shelves_for_calc = group_data['num_rows'] + (1 if group_data['has_top_cap'] 
 total_shelf_h = num_shelves_for_calc * group_data['shelf_thickness']
 calculated_total_height = total_net_bin_h + total_shelf_h + group_data['ground_clearance']
 st.sidebar.metric("Calculated Total Height", f"{calculated_total_height:.1f} mm")
-group_data['total_height'] = calculated_total_height # Use this for drawing
-group_data['bin_split_thickness'] = group_data['shelf_thickness'] # Ensure bin split thickness is always updated
+# **FIXED**: The drawing and export should always use the dynamically calculated height
+group_data['total_height'] = calculated_total_height 
 
 # --- Main Area for Drawing ---
 st.header(f"Generated Design for: {group_data['name']}")
 fig = draw_bay_group(group_data)
 st.pyplot(fig, use_container_width=True)
 
-# --- Global Download Button (FIXED) ---
+# --- Global Download Button ---
 st.sidebar.markdown("---")
 st.sidebar.header("Download All Designs")
 
-# Recalculate all group heights before creating the buffer
-for group in st.session_state.bay_groups:
-    total_net_bin_h = sum(group['bin_heights'])
-    num_shelves_for_calc = group['num_rows'] + (1 if group['has_top_cap'] else 0)
-    total_shelf_h = num_shelves_for_calc * group['shelf_thickness']
-    group['total_height'] = total_net_bin_h + total_shelf_h + group['ground_clearance']
-    group['bin_split_thickness'] = group['shelf_thickness']
+# Create a placeholder for the download button
+download_button_placeholder = st.sidebar.empty()
 
-ppt_buffer = create_editable_powerpoint(st.session_state.bay_groups)
+if st.sidebar.button("Generate PPTX"):
+    # Recalculate all group heights before creating the buffer
+    for group in st.session_state.bay_groups:
+        total_net_bin_h = sum(group['bin_heights'])
+        num_shelves_for_calc = group['num_rows'] + (1 if group['has_top_cap'] else 0)
+        total_shelf_h = num_shelves_for_calc * group['shelf_thickness']
+        group['total_height'] = total_net_bin_h + total_shelf_h + group['ground_clearance']
 
-st.sidebar.download_button(
-    label="Generate & Download PPTX",
-    data=ppt_buffer,
-    file_name="all_bay_designs.pptx",
-    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-)
+    ppt_buffer = create_editable_powerpoint(st.session_state.bay_groups)
+    
+    download_button_placeholder.download_button(
+        label="Download Now",
+        data=ppt_buffer,
+        file_name="all_bay_designs.pptx",
+        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    )
 

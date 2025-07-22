@@ -6,6 +6,7 @@ from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE
+from pptx.enum.shapes import MSO_SHAPE
 
 # --- Page Configuration ---
 st.set_page_config(layout="wide", page_title="Storage Bay Designer")
@@ -146,48 +147,44 @@ def create_editable_powerpoint(bay_groups):
     for group_data in bay_groups:
         slide = prs.slides.add_slide(prs.slide_layouts[6]) # Blank layout
         
-        # --- Add Title ---
         title_shape = slide.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(9), Inches(0.5))
         title_shape.text = f"Design for: {group_data['name']}"
 
         # --- Unpack Parameters ---
-        num_bays = group_data['num_bays']
-        bay_width = group_data['bay_width']
-        total_height = group_data['total_height']
-        ground_clearance = group_data['ground_clearance']
-        shelf_thickness = group_data['shelf_thickness']
-        side_panel_thickness = group_data['side_panel_thickness']
-        num_cols = group_data['num_cols']
-        num_rows = group_data['num_rows']
-        has_top_cap = group_data['has_top_cap']
-        color_hex = group_data['color']
-        bin_heights = group_data['bin_heights']
+        num_bays, bay_width, total_height, ground_clearance, shelf_thickness, side_panel_thickness, num_cols, num_rows, has_top_cap, color_hex, bin_heights = (
+            group_data['num_bays'], group_data['bay_width'], group_data['total_height'], group_data['ground_clearance'],
+            group_data['shelf_thickness'], group_data['side_panel_thickness'], group_data['num_cols'], group_data['num_rows'],
+            group_data['has_top_cap'], group_data['color'], group_data['bin_heights']
+        )
         bin_split_thickness = shelf_thickness
 
         # --- Define Drawing Area and Scale on Slide ---
-        canvas_left = Inches(1)
-        canvas_top = Inches(1)
-        canvas_width = Inches(8)
-        canvas_height = Inches(5.5)
-        
+        canvas_left, canvas_top, canvas_width, canvas_height = Inches(1.5), Inches(1), Inches(7), Inches(6)
         total_group_width = (num_bays * bay_width) + (2 * side_panel_thickness)
-        
-        scale_x = canvas_width / total_group_width
-        scale_y = canvas_height / total_height
-        scale = min(scale_x, scale_y)
+        scale = min(canvas_width / total_group_width, canvas_height / total_height)
 
-        def add_shape(left, top, width, height, color_hex):
-            shape = slide.shapes.add_shape(1, left, top, width, height) # 1 = rectangle
+        def add_shape(left_mm, top_mm, width_mm, height_mm, color_hex):
+            # **FIXED**: Y-coordinate is inverted for PowerPoint (top-left origin)
+            left = canvas_left + left_mm * scale
+            top = canvas_top + (total_height - top_mm - height_mm) * scale
+            width = width_mm * scale
+            height = height_mm * scale
+            shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, height)
             shape.fill.solid()
             shape.fill.fore_color.rgb = RGBColor(*hex_to_rgb(color_hex))
-            shape.line.fill.background() # No outline
+            shape.line.fill.background()
             return shape
+        
+        def add_text(left_mm, top_mm, text, size=8):
+            textbox = slide.shapes.add_textbox(canvas_left + left_mm * scale, canvas_top + (total_height - top_mm) * scale, Inches(1), Inches(0.1))
+            p = textbox.text_frame.paragraphs[0]
+            p.text = text
+            p.font.size = Pt(size)
+            textbox.text_frame.auto_size = MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
 
         # --- Draw Structure using PPTX Shapes ---
         structure_height = total_height - ground_clearance
-        
-        # Left side panel
-        add_shape(canvas_left, canvas_top, side_panel_thickness * scale, total_height * scale, color_hex)
+        add_shape(0, 0, side_panel_thickness, total_height, color_hex) # Left panel
         current_x_mm = side_panel_thickness
 
         for bay_idx in range(num_bays):
@@ -199,25 +196,34 @@ def create_editable_powerpoint(bay_groups):
             if num_cols > 1:
                 for i in range(1, num_cols):
                     split_x_mm = bin_start_x_mm + (i * bin_width) + ((i-1) * bin_split_thickness)
-                    add_shape(canvas_left + split_x_mm * scale, canvas_top + ground_clearance * scale, bin_split_thickness * scale, structure_height * scale, color_hex)
+                    add_shape(split_x_mm, ground_clearance, bin_split_thickness, structure_height, color_hex)
             
+            # Add bin width text
+            for i in range(num_cols):
+                text_x = bin_start_x_mm + (i * (bin_width + bin_split_thickness)) + (bin_width / 2)
+                add_text(text_x, total_height + 50, f"{bin_width:.1f}")
+
             current_x_mm += bay_width
 
-        # Right side panel
-        add_shape(canvas_left + current_x_mm * scale, canvas_top, side_panel_thickness * scale, total_height * scale, color_hex)
+        add_shape(current_x_mm, 0, side_panel_thickness, total_height, color_hex) # Right panel
 
-        # Horizontal shelves
+        # Horizontal shelves and height text
         current_y_mm = ground_clearance
         for i in range(num_rows):
-            add_shape(canvas_left, canvas_top + current_y_mm * scale, total_group_width * scale, shelf_thickness * scale, color_hex)
+            add_shape(0, current_y_mm, total_group_width, shelf_thickness, color_hex)
             current_y_mm += shelf_thickness
             if i < len(bin_heights):
-                current_y_mm += bin_heights[i]
+                net_bin_h = bin_heights[i]
+                add_text(total_group_width + 50, current_y_mm + (net_bin_h / 2), f"{net_bin_h:.1f}")
+                current_y_mm += net_bin_h
 
         if has_top_cap:
-            add_shape(canvas_left, canvas_top + (total_height - shelf_thickness) * scale, total_group_width * scale, shelf_thickness * scale, color_hex)
+            add_shape(0, total_height - shelf_thickness, total_group_width, shelf_thickness, color_hex)
 
-    # Save presentation to a buffer
+        # Add total dimension text
+        add_text(total_group_width / 2, -50, f"Total Width: {total_group_width:.0f} mm")
+        add_text(-200, total_height / 2, f"Total Height: {total_height:.0f} mm")
+
     ppt_buf = io.BytesIO()
     prs.save(ppt_buf)
     ppt_buf.seek(0)
@@ -331,4 +337,3 @@ if st.sidebar.button("Generate & Download PPTX"):
         file_name="all_bay_designs.pptx",
         mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
     )
-

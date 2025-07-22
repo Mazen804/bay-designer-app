@@ -44,7 +44,6 @@ def draw_bay_group(params):
     color = params['color']
     bin_heights = params['bin_heights']
     zoom_factor = params.get('zoom', 1.0)
-    # Bin split thickness is now the same as shelf thickness
     bin_split_thickness = shelf_thickness
 
     # --- Calculations ---
@@ -136,11 +135,6 @@ def draw_bay_group(params):
     
     return fig
 
-def hex_to_rgb(hex_color):
-    """Converts a hex color string to an RGB tuple."""
-    hex_color = hex_color.lstrip('#')
-    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-
 def create_editable_powerpoint(bay_groups):
     """Creates a PowerPoint presentation from bay group data using native shapes."""
     prs = Presentation()
@@ -153,16 +147,17 @@ def create_editable_powerpoint(bay_groups):
 
         # --- Unpack Parameters ---
         num_bays, bay_width, total_height, ground_clearance, shelf_thickness, side_panel_thickness, num_cols, num_rows, has_top_cap, color_hex, bin_heights = (
-            group_data['num_bays'], group_data['bay_width'], group_data['total_height'], group_data['ground_clearance'],
-            group_data['shelf_thickness'], group_data['side_panel_thickness'], group_data['num_cols'], group_data['num_rows'],
-            group_data['has_top_cap'], group_data['color'], group_data['bin_heights']
+            group_data['num_bays'], group_data['bay_width'], group_data['total_height'],
+            group_data['ground_clearance'], group_data['shelf_thickness'], group_data['side_panel_thickness'],
+            group_data['num_cols'], group_data['num_rows'], group_data['has_top_cap'],
+            group_data['color'], group_data['bin_heights']
         )
         bin_split_thickness = shelf_thickness
 
         # --- Define Drawing Area and Scale on Slide ---
         canvas_left, canvas_top, canvas_width, canvas_height = Inches(1.5), Inches(1), Inches(7), Inches(5.5)
         total_group_width = (num_bays * bay_width) + (2 * side_panel_thickness)
-        scale = min(canvas_width / (total_group_width + 400), canvas_height / (total_height + 200)) # Add padding for dimensions
+        scale = min(canvas_width / (total_group_width + 400), canvas_height / (total_height + 200))
 
         def pt_to_emu(points):
             return int(points * 12700)
@@ -178,35 +173,32 @@ def create_editable_powerpoint(bay_groups):
             shape.line.fill.background()
             return shape
         
-        def add_dimension(start_x, start_y, end_x, end_y, text, is_vertical=False, offset_mm=50):
-            # Line
-            line = slide.shapes.add_connector(1, start_x, start_y, end_x, end_y) # 1 = line
+        def add_dimension(start_x, start_y, end_x, end_y, text, is_vertical=False):
+            line = slide.shapes.add_connector(1, start_x, start_y, end_x, end_y)
             line.line.fill.solid()
             line.line.fill.fore_color.rgb = RGBColor(0,0,0)
-            
-            # Arrows
-            line.line.begin_arrow_type = 2 # 2 = triangle arrow
+            line.line.begin_arrow_type = 2
             line.line.end_arrow_type = 2
 
-            # Text
             if is_vertical:
                 text_left = start_x + pt_to_emu(5)
-                text_top = start_y + (end_y - start_y) / 2
+                text_top = start_y + (end_y - start_y) / 2 - pt_to_emu(20)
                 textbox = slide.shapes.add_textbox(text_left, text_top, Inches(0.5), Inches(0.5))
                 textbox.rotation = 270.0
             else:
-                text_left = start_x + (end_x - start_x) / 2
+                text_left = start_x + (end_x - start_x) / 2 - pt_to_emu(20)
                 text_top = start_y - pt_to_emu(12)
                 textbox = slide.shapes.add_textbox(text_left, text_top, Inches(0.5), Inches(0.5))
             
-            textbox.text_frame.text = text
-            textbox.text_frame.paragraphs[0].font.size = Pt(8)
-            textbox.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+            p = textbox.text_frame.paragraphs[0]
+            p.text = text
+            p.font.size = Pt(8)
+            p.alignment = PP_ALIGN.CENTER
             textbox.text_frame.auto_size = MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
 
         # --- Draw Structure using PPTX Shapes ---
         structure_height = total_height - ground_clearance
-        add_shape(0, 0, side_panel_thickness, total_height, color_hex) # Left panel
+        add_shape(0, 0, side_panel_thickness, total_height, color_hex)
         current_x_mm = side_panel_thickness
 
         for bay_idx in range(num_bays):
@@ -220,7 +212,6 @@ def create_editable_powerpoint(bay_groups):
                     split_x_mm = bin_start_x_mm + (i * bin_width) + ((i-1) * bin_split_thickness)
                     add_shape(split_x_mm, ground_clearance, bin_split_thickness, structure_height, color_hex)
             
-            # Add bin width dimensions
             for i in range(num_cols):
                 dim_start_x = canvas_left + (bin_start_x_mm + i * (bin_width + bin_split_thickness)) * scale
                 dim_end_x = dim_start_x + (bin_width * scale)
@@ -229,9 +220,8 @@ def create_editable_powerpoint(bay_groups):
 
             current_x_mm += bay_width
 
-        add_shape(current_x_mm, 0, side_panel_thickness, total_height, color_hex) # Right panel
+        add_shape(current_x_mm, 0, side_panel_thickness, total_height, color_hex)
 
-        # Horizontal shelves and height dimensions
         current_y_mm = ground_clearance
         for i in range(num_rows):
             shelf_bottom_y = current_y_mm
@@ -242,13 +232,11 @@ def create_editable_powerpoint(bay_groups):
                 net_bin_h = bin_heights[i]
                 pitch_h = net_bin_h + shelf_thickness
 
-                # Net height dimension
                 dim_start_y = canvas_top + (total_height - (shelf_top_y + net_bin_h)) * scale
                 dim_end_y = canvas_top + (total_height - shelf_top_y) * scale
                 dim_x = canvas_left + (total_group_width + 50) * scale
                 add_dimension(dim_x, dim_start_y, dim_x, dim_end_y, f"{net_bin_h:.1f}", is_vertical=True)
                 
-                # Pitch height dimension
                 pitch_dim_start_y = canvas_top + (total_height - (shelf_bottom_y + pitch_h)) * scale
                 pitch_dim_end_y = canvas_top + (total_height - shelf_bottom_y) * scale
                 pitch_dim_x = canvas_left + (total_group_width + 150) * scale
@@ -259,7 +247,6 @@ def create_editable_powerpoint(bay_groups):
         if has_top_cap:
             add_shape(0, total_height - shelf_thickness, total_group_width, shelf_thickness, color_hex)
 
-        # Add total dimension text
         total_w_y = canvas_top + canvas_height + pt_to_emu(20)
         add_dimension(canvas_left, total_w_y, canvas_left + total_group_width * scale, total_w_y, f"Total Width: {total_group_width:.0f} mm")
         
@@ -320,28 +307,13 @@ def distribute_total_height():
         for j in range(active_group['num_rows']):
             st.session_state[f"level_{active_group_idx}_{j}"] = uniform_net_h
 
-def recalculate_total_height():
-    active_group = st.session_state.bay_groups[active_group_idx]
-    current_bin_heights = []
-    for j in range(active_group['num_rows']):
-        key = f"level_{active_group_idx}_{j}"
-        current_bin_heights.append(st.session_state.get(key, 0.0))
-    
-    active_group['bin_heights'] = current_bin_heights
-    total_net_bin_h = sum(current_bin_heights)
-
-    num_shelves_for_calc = active_group['num_rows'] + (1 if active_group['has_top_cap'] else 0)
-    total_shelf_h = num_shelves_for_calc * active_group['shelf_thickness']
-    
-    active_group['total_height'] = total_net_bin_h + total_shelf_h + active_group['ground_clearance']
-
 # --- Configuration Inputs ---
 st.sidebar.subheader("Structure")
 group_data['num_bays'] = st.sidebar.number_input("Number of Bays in Group", min_value=1, value=int(group_data['num_bays']), key=f"num_bays_{active_group_idx}")
 group_data['bay_width'] = st.sidebar.number_input("Width per Bay (mm)", min_value=1.0, value=float(group_data['bay_width']), key=f"bay_width_{active_group_idx}")
-group_data['total_height'] = st.sidebar.number_input("Total Height (mm)", min_value=1.0, value=float(group_data['total_height']), key=f"total_height_{active_group_idx}", on_change=distribute_total_height)
-group_data['ground_clearance'] = st.sidebar.number_input("Ground Clearance (mm)", min_value=0.0, value=float(group_data['ground_clearance']), key=f"ground_clearance_{active_group_idx}", on_change=distribute_total_height)
-group_data['has_top_cap'] = st.sidebar.checkbox("Add Top Cap", value=group_data['has_top_cap'], key=f"has_top_cap_{active_group_idx}", on_change=recalculate_total_height)
+group_data['total_height'] = st.sidebar.number_input("Target Total Height (mm)", min_value=1.0, value=float(group_data['total_height']), key=f"total_height_{active_group_idx}", on_change=distribute_total_height, help="Set this to automatically distribute height among bins.")
+group_data['ground_clearance'] = st.sidebar.number_input("Ground Clearance (mm)", min_value=0.0, value=float(group_data['ground_clearance']), key=f"ground_clearance_{active_group_idx}")
+group_data['has_top_cap'] = st.sidebar.checkbox("Add Top Cap", value=group_data['has_top_cap'], key=f"has_top_cap_{active_group_idx}")
 
 st.sidebar.subheader("Layout")
 group_data['num_rows'] = st.sidebar.number_input("Shelves (Rows)", min_value=1, value=int(group_data['num_rows']), key=f"num_rows_{active_group_idx}")
@@ -351,16 +323,26 @@ st.sidebar.markdown("**Individual Net Bin Heights**")
 if len(group_data['bin_heights']) != group_data['num_rows']:
     distribute_total_height()
 
+current_bin_heights = []
 for j in range(group_data['num_rows']):
     level_name = chr(65 + j) # Level A, B, C...
-    st.sidebar.number_input(f"Level {level_name} Net Height", min_value=1.0, value=float(group_data['bin_heights'][j]), key=f"level_{active_group_idx}_{j}", on_change=recalculate_total_height)
+    height = st.sidebar.number_input(f"Level {level_name} Net Height", min_value=1.0, value=float(group_data['bin_heights'][j]), key=f"level_{active_group_idx}_{j}")
+    current_bin_heights.append(height)
+group_data['bin_heights'] = current_bin_heights
 
 st.sidebar.subheader("Materials & Appearance")
-group_data['shelf_thickness'] = st.sidebar.number_input("Shelf Thickness (mm)", min_value=1.0, value=float(group_data['shelf_thickness']), key=f"shelf_thick_{active_group_idx}", on_change=distribute_total_height)
+group_data['shelf_thickness'] = st.sidebar.number_input("Shelf Thickness (mm)", min_value=1.0, value=float(group_data['shelf_thickness']), key=f"shelf_thick_{active_group_idx}")
 group_data['side_panel_thickness'] = st.sidebar.number_input("Outer Side Panel Thickness (mm)", min_value=1.0, value=float(group_data['side_panel_thickness']), key=f"side_panel_thick_{active_group_idx}")
 group_data['color'] = st.sidebar.color_picker("Structure Color", value=group_data['color'], key=f"color_{active_group_idx}")
 group_data['zoom'] = st.sidebar.slider("Zoom", 1.0, 5.0, group_data.get('zoom', 1.0), 0.1, key=f"zoom_{active_group_idx}", help="Increase to zoom out and see more area around the design.")
 
+# --- Calculate and Display Final Height ---
+total_net_bin_h = sum(group_data['bin_heights'])
+num_shelves_for_calc = group_data['num_rows'] + (1 if group_data['has_top_cap'] else 0)
+total_shelf_h = num_shelves_for_calc * group_data['shelf_thickness']
+calculated_total_height = total_net_bin_h + total_shelf_h + group_data['ground_clearance']
+st.sidebar.metric("Calculated Total Height", f"{calculated_total_height:.1f} mm")
+group_data['total_height'] = calculated_total_height # Use this for drawing
 
 # --- Main Area for Drawing ---
 st.header(f"Generated Design for: {group_data['name']}")
@@ -372,6 +354,13 @@ st.sidebar.markdown("---")
 st.sidebar.header("Download All Designs")
 
 if st.sidebar.button("Generate & Download PPTX"):
+    # Recalculate all group heights before downloading
+    for group in st.session_state.bay_groups:
+        total_net_bin_h = sum(group['bin_heights'])
+        num_shelves_for_calc = group['num_rows'] + (1 if group['has_top_cap'] else 0)
+        total_shelf_h = num_shelves_for_calc * group['shelf_thickness']
+        group['total_height'] = total_net_bin_h + total_shelf_h + group['ground_clearance']
+
     ppt_buffer = create_editable_powerpoint(st.session_state.bay_groups)
     st.sidebar.download_button(
         label="Download Now",

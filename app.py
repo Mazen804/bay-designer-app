@@ -38,13 +38,13 @@ def draw_bay_group(params):
     ground_clearance = params['ground_clearance']
     shelf_thickness = params['shelf_thickness']
     side_panel_thickness = params['side_panel_thickness']
+    bin_split_thickness = params['bin_split_thickness']
     num_cols = params['num_cols']
     num_rows = params['num_rows']
     has_top_cap = params['has_top_cap']
     color = params['color']
     bin_heights = params['bin_heights']
     zoom_factor = params.get('zoom', 1.0)
-    bin_split_thickness = shelf_thickness
 
     # --- Calculations ---
     total_group_width = (num_bays * bay_width) + (2 * side_panel_thickness)
@@ -146,13 +146,12 @@ def create_editable_powerpoint(bay_groups):
         title_shape.text = f"Design for: {group_data['name']}"
 
         # --- Unpack Parameters ---
-        num_bays, bay_width, total_height, ground_clearance, shelf_thickness, side_panel_thickness, num_cols, num_rows, has_top_cap, color_hex, bin_heights = (
+        num_bays, bay_width, total_height, ground_clearance, shelf_thickness, side_panel_thickness, num_cols, num_rows, has_top_cap, color_hex, bin_heights, bin_split_thickness = (
             group_data['num_bays'], group_data['bay_width'], group_data['total_height'],
             group_data['ground_clearance'], group_data['shelf_thickness'], group_data['side_panel_thickness'],
             group_data['num_cols'], group_data['num_rows'], group_data['has_top_cap'],
-            group_data['color'], group_data['bin_heights']
+            group_data['color'], group_data['bin_heights'], group_data['bin_split_thickness']
         )
-        bin_split_thickness = shelf_thickness
 
         # --- Define Drawing Area and Scale on Slide ---
         canvas_left, canvas_top, canvas_width, canvas_height = Inches(1.5), Inches(1), Inches(7), Inches(5.5)
@@ -263,6 +262,7 @@ if 'bay_groups' not in st.session_state:
     st.session_state.bay_groups = [{
         "name": "Group A", "num_bays": 2, "bay_width": 1050.0, "total_height": 2000.0,
         "ground_clearance": 50.0, "shelf_thickness": 18.0, "side_panel_thickness": 18.0,
+        "bin_split_thickness": 18.0,
         "num_cols": 4, "num_rows": 5, "has_top_cap": True, "color": "#4A90E2",
         "bin_heights": [350.0] * 5,
         "zoom": 1.0

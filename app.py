@@ -88,16 +88,13 @@ def draw_bay_group(params):
             pitch_h = net_bin_h + shelf_thickness
             level_name = chr(65 + i)
             
-            # Draw Net Bin Height dimension line
             bin_bottom_y = shelf_top_y
             bin_top_y = bin_bottom_y + net_bin_h
             draw_dimension_line(ax, total_group_width + dim_offset_x, bin_bottom_y, total_group_width + dim_offset_x, bin_top_y, f"{net_bin_h:.1f}", is_vertical=True, offset=5, color='#3b82f6')
             
-            # Draw Pitch Height dimension line
-            pitch_top_y = shelf_bottom_y + pitch_h # Pitch is from bottom of shelf to bottom of next shelf
+            pitch_top_y = shelf_bottom_y + pitch_h
             draw_dimension_line(ax, total_group_width + pitch_offset_x, shelf_bottom_y, total_group_width + pitch_offset_x, pitch_top_y, f"{pitch_h:.1f}", is_vertical=True, offset=5, color='black')
 
-            # Draw Level Name
             ax.text(-dim_offset_x, (bin_bottom_y + bin_top_y) / 2, level_name, va='center', ha='center', fontsize=12, fontweight='bold')
             
             current_y = bin_top_y
@@ -105,9 +102,15 @@ def draw_bay_group(params):
     if has_top_cap:
         ax.add_patch(patches.Rectangle((0, total_height - shelf_thickness), total_group_width, shelf_thickness, facecolor=color))
 
-    # --- Draw Bin Width Dimensions for Level A ---
-    if num_cols > 0 and ground_clearance > 20: # Check if there's enough space
-        dim_y_pos = ground_clearance / 2
+    # --- Draw Main Dimension Lines ---
+    dim_offset_y = 0.05 * total_height
+    draw_dimension_line(ax, 0, -dim_offset_y, total_group_width, -dim_offset_y, f"Total Group Width: {total_group_width:.0f} mm", offset=10)
+    draw_dimension_line(ax, -dim_offset_x * 4, 0, -dim_offset_x * 4, total_height, f"Total Height: {total_height:.0f} mm", is_vertical=True, offset=10)
+
+    # --- Draw Bin Width Dimensions below the bay ---
+    if num_cols > 0:
+        # **FIXED**: Position the dimension line below the main total width line for clarity
+        dim_y_pos = -dim_offset_y * 1.5 
         loop_current_x = side_panel_thickness
         for bay_idx in range(num_bays):
             net_width_per_bay = bay_width
@@ -118,20 +121,15 @@ def draw_bay_group(params):
             for i in range(num_cols):
                 dim_start_x = bin_start_x + (i * (bin_width + bin_split_thickness))
                 dim_end_x = dim_start_x + bin_width
-                draw_dimension_line(ax, dim_start_x, dim_y_pos, dim_end_x, dim_y_pos, f"{bin_width:.1f}", offset=-10, color='#3b82f6')
+                draw_dimension_line(ax, dim_start_x, dim_y_pos, dim_end_x, dim_y_pos, f"{bin_width:.1f}", offset=10, color='#3b82f6')
             
             loop_current_x += bay_width
-
-    # --- Draw Main Dimension Lines ---
-    dim_offset_y = 0.05 * total_height
-    draw_dimension_line(ax, 0, -dim_offset_y, total_group_width, -dim_offset_y, f"Total Group Width: {total_group_width:.0f} mm", offset=10)
-    draw_dimension_line(ax, -dim_offset_x * 4, 0, -dim_offset_x * 4, total_height, f"Total Height: {total_height:.0f} mm", is_vertical=True, offset=10)
 
     # --- Final Touches ---
     ax.set_aspect('equal', adjustable='box')
     ax.axis('off')
     ax.set_xlim(-dim_offset_x * 6 * zoom_factor, total_group_width + pitch_offset_x * 2 * zoom_factor)
-    ax.set_ylim(-dim_offset_y * 2 * zoom_factor, total_height + dim_offset_y * 2 * zoom_factor)
+    ax.set_ylim(-dim_offset_y * 3 * zoom_factor, total_height + dim_offset_y * 2 * zoom_factor)
     
     return fig
 

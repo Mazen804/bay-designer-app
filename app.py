@@ -3,7 +3,9 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import io
 from pptx import Presentation
-from pptx.util import Inches
+from pptx.util import Inches, Pt
+from pptx.dml.color import RGBColor
+from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE
 
 # --- Page Configuration ---
 st.set_page_config(layout="wide", page_title="Storage Bay Designer")
@@ -27,7 +29,7 @@ def draw_dimension_line(ax, x1, y1, x2, y2, text, is_vertical=False, offset=10, 
         ax.text((x1 + x2) / 2, y1 + offset, text, va='bottom', ha='center', fontsize=fontsize, color=color)
 
 def draw_bay_group(params):
-    """Main function to draw a group of bays using Matplotlib."""
+    """Main function to draw a group of bays using Matplotlib for the LIVE PREVIEW."""
     # Unpack parameters
     num_bays = params['num_bays']
     bay_width = params['bay_width']
@@ -39,8 +41,9 @@ def draw_bay_group(params):
     num_rows = params['num_rows']
     has_top_cap = params['has_top_cap']
     color = params['color']
-    bin_heights = params['bin_heights'] # These are NET bin heights
+    bin_heights = params['bin_heights']
     zoom_factor = params.get('zoom', 1.0)
+    bin_split_thickness = shelf_thickness
 
     # --- Calculations ---
     total_group_width = (num_bays * bay_width) + (2 * side_panel_thickness)
@@ -55,16 +58,14 @@ def draw_bay_group(params):
 
     for bay_idx in range(num_bays):
         net_width_per_bay = bay_width
-        # **FIXED**: Vertical dividers now use shelf_thickness
-        total_internal_dividers = (num_cols - 1) * shelf_thickness
+        total_internal_dividers = (num_cols - 1) * bin_split_thickness
         bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
 
         bin_start_x = current_x
         if num_cols > 1:
             for i in range(1, num_cols):
-                # **FIXED**: Vertical dividers now use shelf_thickness
-                split_x = bin_start_x + (i * bin_width) + ((i-1) * shelf_thickness)
-                ax.add_patch(patches.Rectangle((split_x, ground_clearance), shelf_thickness, structure_height, facecolor=color))
+                split_x = bin_start_x + (i * bin_width) + ((i-1) * bin_split_thickness)
+                ax.add_patch(patches.Rectangle((split_x, ground_clearance), bin_split_thickness, structure_height, facecolor=color))
         
         if bay_idx < num_bays - 1:
              divider_x = current_x + bay_width
@@ -114,14 +115,12 @@ def draw_bay_group(params):
         loop_current_x = side_panel_thickness
         for bay_idx in range(num_bays):
             net_width_per_bay = bay_width
-            # **FIXED**: Use shelf_thickness for calculation
-            total_internal_dividers = (num_cols - 1) * shelf_thickness
+            total_internal_dividers = (num_cols - 1) * bin_split_thickness
             bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
             
             bin_start_x = loop_current_x
             for i in range(num_cols):
-                # **FIXED**: Use shelf_thickness for positioning
-                dim_start_x = bin_start_x + (i * (bin_width + shelf_thickness))
+                dim_start_x = bin_start_x + (i * (bin_width + bin_split_thickness))
                 dim_end_x = dim_start_x + bin_width
                 draw_dimension_line(ax, dim_start_x, dim_y_pos, dim_end_x, dim_y_pos, f"{bin_width:.1f}", offset=10, color='#3b82f6')
             
@@ -135,39 +134,90 @@ def draw_bay_group(params):
     
     return fig
 
-def create_powerpoint(figures_with_names):
-    """Creates a PowerPoint presentation from a list of figures."""
+def hex_to_rgb(hex_color):
+    """Converts a hex color string to an RGB tuple."""
+    hex_color = hex_color.lstrip('#')
+    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+
+def create_editable_powerpoint(bay_groups):
+    """Creates a PowerPoint presentation from bay group data using native shapes."""
     prs = Presentation()
-    for fig, name in figures_with_names:
-        blank_slide_layout = prs.slide_layouts[6]
-        slide = prs.slides.add_slide(blank_slide_layout)
+    
+    for group_data in bay_groups:
+        slide = prs.slides.add_slide(prs.slide_layouts[6]) # Blank layout
         
+        # --- Add Title ---
         title_shape = slide.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(9), Inches(0.5))
-        title_shape.text = f"Design for: {name}"
+        title_shape.text = f"Design for: {group_data['name']}"
 
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png', bbox_inches='tight', pad_inches=0.2)
-        buf.seek(0)
+        # --- Unpack Parameters ---
+        num_bays = group_data['num_bays']
+        bay_width = group_data['bay_width']
+        total_height = group_data['total_height']
+        ground_clearance = group_data['ground_clearance']
+        shelf_thickness = group_data['shelf_thickness']
+        side_panel_thickness = group_data['side_panel_thickness']
+        num_cols = group_data['num_cols']
+        num_rows = group_data['num_rows']
+        has_top_cap = group_data['has_top_cap']
+        color_hex = group_data['color']
+        bin_heights = group_data['bin_heights']
+        bin_split_thickness = shelf_thickness
+
+        # --- Define Drawing Area and Scale on Slide ---
+        canvas_left = Inches(1)
+        canvas_top = Inches(1)
+        canvas_width = Inches(8)
+        canvas_height = Inches(5.5)
         
-        margin = Inches(0.25)
-        max_width = prs.slide_width - (2 * margin)
-        max_height = prs.slide_height - Inches(0.75) - margin 
-
-        img_width_px, img_height_px = fig.get_size_inches() * fig.dpi
-        img_aspect_ratio = img_width_px / img_height_px
-
-        if (max_width / img_aspect_ratio) > max_height:
-            pic_height = max_height
-            pic_width = max_height * img_aspect_ratio
-        else:
-            pic_width = max_width
-            pic_height = max_width / img_aspect_ratio
-
-        left = (prs.slide_width - pic_width) / 2
-        top = Inches(0.75) + ((max_height - pic_height) / 2)
+        total_group_width = (num_bays * bay_width) + (2 * side_panel_thickness)
         
-        slide.shapes.add_picture(buf, left, top, width=pic_width, height=pic_height)
+        scale_x = canvas_width / total_group_width
+        scale_y = canvas_height / total_height
+        scale = min(scale_x, scale_y)
 
+        def add_shape(left, top, width, height, color_hex):
+            shape = slide.shapes.add_shape(1, left, top, width, height) # 1 = rectangle
+            shape.fill.solid()
+            shape.fill.fore_color.rgb = RGBColor(*hex_to_rgb(color_hex))
+            shape.line.fill.background() # No outline
+            return shape
+
+        # --- Draw Structure using PPTX Shapes ---
+        structure_height = total_height - ground_clearance
+        
+        # Left side panel
+        add_shape(canvas_left, canvas_top, side_panel_thickness * scale, total_height * scale, color_hex)
+        current_x_mm = side_panel_thickness
+
+        for bay_idx in range(num_bays):
+            net_width_per_bay = bay_width
+            total_internal_dividers = (num_cols - 1) * bin_split_thickness
+            bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
+
+            bin_start_x_mm = current_x_mm
+            if num_cols > 1:
+                for i in range(1, num_cols):
+                    split_x_mm = bin_start_x_mm + (i * bin_width) + ((i-1) * bin_split_thickness)
+                    add_shape(canvas_left + split_x_mm * scale, canvas_top + ground_clearance * scale, bin_split_thickness * scale, structure_height * scale, color_hex)
+            
+            current_x_mm += bay_width
+
+        # Right side panel
+        add_shape(canvas_left + current_x_mm * scale, canvas_top, side_panel_thickness * scale, total_height * scale, color_hex)
+
+        # Horizontal shelves
+        current_y_mm = ground_clearance
+        for i in range(num_rows):
+            add_shape(canvas_left, canvas_top + current_y_mm * scale, total_group_width * scale, shelf_thickness * scale, color_hex)
+            current_y_mm += shelf_thickness
+            if i < len(bin_heights):
+                current_y_mm += bin_heights[i]
+
+        if has_top_cap:
+            add_shape(canvas_left, canvas_top + (total_height - shelf_thickness) * scale, total_group_width * scale, shelf_thickness * scale, color_hex)
+
+    # Save presentation to a buffer
     ppt_buf = io.BytesIO()
     prs.save(ppt_buf)
     ppt_buf.seek(0)
@@ -266,8 +316,6 @@ group_data['zoom'] = st.sidebar.slider("Zoom", 1.0, 5.0, group_data.get('zoom', 
 
 # --- Main Area for Drawing ---
 st.header(f"Generated Design for: {group_data['name']}")
-# Pass shelf_thickness as bin_split_thickness to the drawing function
-group_data['bin_split_thickness'] = group_data['shelf_thickness']
 fig = draw_bay_group(group_data)
 st.pyplot(fig, use_container_width=True)
 
@@ -275,20 +323,12 @@ st.pyplot(fig, use_container_width=True)
 st.sidebar.markdown("---")
 st.sidebar.header("Download All Designs")
 
-all_figures = []
-for group in st.session_state.bay_groups:
-    group['bin_split_thickness'] = group['shelf_thickness'] # Ensure this is set for all groups
-    fig_to_download = draw_bay_group(group)
-    all_figures.append((fig_to_download, group['name']))
-    plt.close(fig_to_download)
-
-if all_figures:
-    ppt_buffer = create_powerpoint(all_figures)
+if st.sidebar.button("Generate & Download PPTX"):
+    ppt_buffer = create_editable_powerpoint(st.session_state.bay_groups)
     st.sidebar.download_button(
-        label="Download All Designs (PPTX)",
+        label="Download Now",
         data=ppt_buffer,
         file_name="all_bay_designs.pptx",
         mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
     )
-
 

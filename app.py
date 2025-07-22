@@ -141,6 +141,9 @@ def draw_bay_group(params):
     ax.set_xlim((view_center - view_span / 2) * zoom_factor, (view_center + view_span / 2) * zoom_factor)
     ax.set_ylim(-dim_offset_y * 3 * zoom_factor, total_height + dim_offset_y * 2 * zoom_factor)
     
+    # **FIXED**: Added ax.axis('off') to remove the outer frame and ticks.
+    ax.axis('off')
+    
     return fig
 
 def create_editable_powerpoint(bay_groups):
@@ -357,7 +360,7 @@ st.header(f"Generated Design for: {group_data['name']}")
 fig = draw_bay_group(group_data)
 st.pyplot(fig, use_container_width=True)
 
-# --- Global Download Button (FIXED) ---
+# --- Global Download Button ---
 st.sidebar.markdown("---")
 st.sidebar.header("Download All Designs")
 

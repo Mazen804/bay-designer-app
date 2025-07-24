@@ -52,16 +52,21 @@ def draw_bay_group(params):
     bin_split_thickness = shelf_thickness
 
     # --- Calculations ---
-    total_group_width = (num_bays * bay_width) + (2 * side_panel_thickness)
+    core_width = num_bays * bay_width
+    total_group_width = core_width + (2 * side_panel_thickness)
     
     fig, ax = plt.subplots(figsize=(12, 12))
 
-    # --- Draw Structure ---
+    # --- Draw Structure using a stable coordinate system ---
+    # The core bays are drawn from x=0 to x=core_width. Side panels are drawn in the negative and positive space around this.
     structure_height = total_height - ground_clearance
     
-    ax.add_patch(patches.Rectangle((0, 0), side_panel_thickness, total_height, facecolor=color))
-    current_x = side_panel_thickness
+    # Left side panel
+    ax.add_patch(patches.Rectangle((-side_panel_thickness, 0), side_panel_thickness, total_height, facecolor=color))
+    # Right side panel
+    ax.add_patch(patches.Rectangle((core_width, 0), side_panel_thickness, total_height, facecolor=color))
 
+    current_x = 0
     for bay_idx in range(num_bays):
         net_width_per_bay = bay_width
         total_internal_dividers = (num_cols - 1) * bin_split_thickness
@@ -79,16 +84,14 @@ def draw_bay_group(params):
 
         current_x += bay_width
 
-    ax.add_patch(patches.Rectangle((current_x, 0), side_panel_thickness, total_height, facecolor=color))
-
     # --- Draw Horizontal Shelves & Bin Height Dimensions ---
     current_y = ground_clearance
-    dim_offset_x = 0.05 * total_group_width
+    dim_offset_x = 0.05 * core_width
     pitch_offset_x = dim_offset_x * 2.5
 
     for i in range(num_rows):
         shelf_bottom_y = current_y
-        ax.add_patch(patches.Rectangle((0, shelf_bottom_y), total_group_width, shelf_thickness, facecolor=color))
+        ax.add_patch(patches.Rectangle((-side_panel_thickness, shelf_bottom_y), total_group_width, shelf_thickness, facecolor=color))
         shelf_top_y = shelf_bottom_y + shelf_thickness
         
         if i < len(bin_heights):
@@ -98,27 +101,27 @@ def draw_bay_group(params):
             
             bin_bottom_y = shelf_top_y
             bin_top_y = bin_bottom_y + net_bin_h
-            draw_dimension_line(ax, total_group_width + dim_offset_x, bin_bottom_y, total_group_width + dim_offset_x, bin_top_y, f"{net_bin_h:.1f}", is_vertical=True, offset=5, color='#3b82f6')
+            draw_dimension_line(ax, core_width + side_panel_thickness + dim_offset_x, bin_bottom_y, core_width + side_panel_thickness + dim_offset_x, bin_top_y, f"{net_bin_h:.1f}", is_vertical=True, offset=5, color='#3b82f6')
             
             pitch_top_y = shelf_bottom_y + pitch_h
-            draw_dimension_line(ax, total_group_width + pitch_offset_x, shelf_bottom_y, total_group_width + pitch_offset_x, pitch_top_y, f"{pitch_h:.1f}", is_vertical=True, offset=5, color='black')
+            draw_dimension_line(ax, core_width + side_panel_thickness + pitch_offset_x, shelf_bottom_y, core_width + side_panel_thickness + pitch_offset_x, pitch_top_y, f"{pitch_h:.1f}", is_vertical=True, offset=5, color='black')
 
-            ax.text(-dim_offset_x, (bin_bottom_y + bin_top_y) / 2, level_name, va='center', ha='center', fontsize=12, fontweight='bold')
+            ax.text(-side_panel_thickness - dim_offset_x, (bin_bottom_y + bin_top_y) / 2, level_name, va='center', ha='center', fontsize=12, fontweight='bold')
             
             current_y = bin_top_y
 
     if has_top_cap:
-        ax.add_patch(patches.Rectangle((0, total_height - shelf_thickness), total_group_width, shelf_thickness, facecolor=color))
+        ax.add_patch(patches.Rectangle((-side_panel_thickness, total_height - shelf_thickness), total_group_width, shelf_thickness, facecolor=color))
 
     # --- Draw Main Dimension Lines ---
     dim_offset_y = 0.05 * total_height
-    draw_dimension_line(ax, 0, -dim_offset_y * 2, total_group_width, -dim_offset_y * 2, f"Total Group Width: {total_group_width:.0f} mm", offset=10)
-    draw_dimension_line(ax, -dim_offset_x * 4, 0, -dim_offset_x * 4, total_height, f"Total Height: {total_height:.0f} mm", is_vertical=True, offset=10)
+    draw_dimension_line(ax, -side_panel_thickness, -dim_offset_y * 2, core_width + side_panel_thickness, -dim_offset_y * 2, f"Total Group Width: {total_group_width:.0f} mm", offset=10)
+    draw_dimension_line(ax, -side_panel_thickness - (dim_offset_x * 4), 0, -side_panel_thickness - (dim_offset_x * 4), total_height, f"Total Height: {total_height:.0f} mm", is_vertical=True, offset=10)
 
     # --- Draw Bin Width Dimensions above the bay ---
     if num_cols > 0:
         dim_y_pos = total_height + dim_offset_y
-        loop_current_x = side_panel_thickness
+        loop_current_x = 0
         for bay_idx in range(num_bays):
             net_width_per_bay = bay_width
             total_internal_dividers = (num_cols - 1) * bin_split_thickness
@@ -134,14 +137,9 @@ def draw_bay_group(params):
 
     # --- Final Touches ---
     ax.set_aspect('equal', adjustable='box')
-    # **FIXED**: Stabilize the view by centering on the core bay structure.
-    core_width = num_bays * bay_width
-    view_center = side_panel_thickness + (core_width / 2)
-    view_span = core_width * 1.5 # A consistent viewing width based on the bays
-    ax.set_xlim((view_center - view_span / 2) * zoom_factor, (view_center + view_span / 2) * zoom_factor)
+    padding_x = core_width * 0.4 + side_panel_thickness
+    ax.set_xlim((-padding_x) * zoom_factor, (core_width + padding_x) * zoom_factor)
     ax.set_ylim(-dim_offset_y * 3 * zoom_factor, total_height + dim_offset_y * 2 * zoom_factor)
-    
-    # **FIXED**: Added ax.axis('off') to remove the outer frame and ticks.
     ax.axis('off')
     
     return fig
@@ -360,23 +358,26 @@ st.header(f"Generated Design for: {group_data['name']}")
 fig = draw_bay_group(group_data)
 st.pyplot(fig, use_container_width=True)
 
-# --- Global Download Button ---
+# --- Global Download Button (FIXED) ---
 st.sidebar.markdown("---")
 st.sidebar.header("Download All Designs")
 
-# Recalculate all group heights before creating the buffer
-for group in st.session_state.bay_groups:
-    total_net_bin_h = sum(group['bin_heights'])
-    num_shelves_for_calc = group['num_rows'] + (1 if group['has_top_cap'] else 0)
-    total_shelf_h = num_shelves_for_calc * group['shelf_thickness']
-    group['total_height'] = total_net_bin_h + total_shelf_h + group['ground_clearance']
+# Create a placeholder for the download button
+download_button_placeholder = st.sidebar.empty()
 
-ppt_buffer = create_editable_powerpoint(st.session_state.bay_groups)
+if st.sidebar.button("Generate PPTX"):
+    # Recalculate all group heights before creating the buffer
+    for group in st.session_state.bay_groups:
+        total_net_bin_h = sum(group['bin_heights'])
+        num_shelves_for_calc = group['num_rows'] + (1 if group['has_top_cap'] else 0)
+        total_shelf_h = num_shelves_for_calc * group['shelf_thickness']
+        group['total_height'] = total_net_bin_h + total_shelf_h + group['ground_clearance']
 
-st.sidebar.download_button(
-    label="Generate & Download PPTX",
-    data=ppt_buffer,
-    file_name="all_bay_designs.pptx",
-    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-)
-
+    ppt_buffer = create_editable_powerpoint(st.session_state.bay_groups)
+    
+    download_button_placeholder.download_button(
+        label="Download Now",
+        data=ppt_buffer,
+        file_name="all_bay_designs.pptx",
+        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    )

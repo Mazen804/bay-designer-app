@@ -77,6 +77,7 @@ def draw_bay_group(params):
     # --- Calculations ---
     core_width = num_bays * bay_width
     total_group_width = core_width + (2 * side_panel_thickness)
+    dim_offset_x = 0.05 * core_width  # Define here for access by all nested functions
     
     fig, ax = plt.subplots(figsize=(12, 12))
 
@@ -108,7 +109,6 @@ def draw_bay_group(params):
     # --- Draw Shelves and Dimensions ---
     def draw_shelves_and_dimensions():
         current_y = ground_clearance
-        dim_offset_x = 0.05 * core_width
         pitch_offset_x = dim_offset_x * 2.5
 
         for i in range(num_rows):

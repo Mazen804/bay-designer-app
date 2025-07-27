@@ -45,6 +45,8 @@ def validate_group_params(params):
         errors.append("Shelf thickness must be positive.")
     if params['side_panel_thickness'] <= 0:
         errors.append("Side panel thickness must be positive.")
+    if params['bin_split_thickness'] <= 0:
+        errors.append("Bin split thickness must be positive.")
     if params['num_cols'] < 1:
         errors.append("Number of columns must be at least 1.")
     if params['num_rows'] < 1:
@@ -66,13 +68,17 @@ def draw_bay_group(params):
     ground_clearance = params['ground_clearance']
     shelf_thickness = params['shelf_thickness']
     side_panel_thickness = params['side_panel_thickness']
+    bin_split_thickness = params['bin_split_thickness']
     num_cols = params['num_cols']
     num_rows = params['num_rows']
     has_top_cap = params['has_top_cap']
     color = params['color']
     bin_heights = params['bin_heights']
     zoom_factor = params.get('zoom', 1.0)
-    bin_split_thickness = shelf_thickness
+
+    # Normalize visual thickness to prevent bulky appearance
+    visual_shelf_thickness = min(shelf_thickness, 30.0)  # Cap at 30 mm for visual rendering
+    visual_bin_split_thickness = min(bin_split_thickness, 30.0)  # Cap at 30 mm for visual rendering
 
     # --- Calculations ---
     core_width = num_bays * bay_width
@@ -91,7 +97,7 @@ def draw_bay_group(params):
     def draw_bays():
         current_x = 0
         for bay_idx in range(num_bays):
-            net_width_per_bay = bay_width
+            net_width_per_bay = bay_width - side_panel_thickness
             total_internal_dividers = (num_cols - 1) * bin_split_thickness
             bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
 
@@ -99,7 +105,7 @@ def draw_bay_group(params):
             if num_cols > 1:
                 for i in range(1, num_cols):
                     split_x = bin_start_x + (i * bin_width) + ((i-1) * bin_split_thickness)
-                    ax.add_patch(patches.Rectangle((split_x, ground_clearance), bin_split_thickness, structure_height, facecolor=color))
+                    ax.add_patch(patches.Rectangle((split_x, ground_clearance), visual_bin_split_thickness, structure_height, facecolor=color))
             
             if bay_idx < num_bays - 1:
                 divider_x = current_x + bay_width
@@ -114,8 +120,8 @@ def draw_bay_group(params):
 
         for i in range(num_rows):
             shelf_bottom_y = current_y
-            ax.add_patch(patches.Rectangle((-side_panel_thickness, shelf_bottom_y), total_group_width, shelf_thickness, facecolor=color))
-            shelf_top_y = shelf_bottom_y + shelf_thickness
+            ax.add_patch(patches.Rectangle((-side_panel_thickness, shelf_bottom_y), total_group_width, visual_shelf_thickness, facecolor=color))
+            shelf_top_y = shelf_bottom_y + shelf_thickness  # Use actual thickness for positioning
             
             if i < len(bin_heights):
                 net_bin_h = bin_heights[i]
@@ -134,7 +140,7 @@ def draw_bay_group(params):
                 current_y = bin_top_y
 
         if has_top_cap:
-            ax.add_patch(patches.Rectangle((-side_panel_thickness, total_height - shelf_thickness), total_group_width, shelf_thickness, facecolor=color))
+            ax.add_patch(patches.Rectangle((-side_panel_thickness, total_height - visual_shelf_thickness), total_group_width, visual_shelf_thickness, facecolor=color))
 
     # --- Draw Main Dimensions ---
     def draw_main_dimensions():
@@ -145,7 +151,7 @@ def draw_bay_group(params):
             dim_y_pos = total_height + dim_offset_y
             loop_current_x = 0
             for bay_idx in range(num_bays):
-                net_width_per_bay = bay_width
+                net_width_per_bay = bay_width - side_panel_thickness
                 total_internal_dividers = (num_cols - 1) * bin_split_thickness
                 bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
                 
@@ -228,13 +234,16 @@ def create_editable_powerpoint(bay_groups):
         title_shape.text = f"Design for: {group_data['name']}"
 
         # --- Unpack Parameters ---
-        num_bays, bay_width, total_height, ground_clearance, shelf_thickness, side_panel_thickness, num_cols, num_rows, has_top_cap, color_hex, bin_heights = (
+        num_bays, bay_width, total_height, ground_clearance, shelf_thickness, side_panel_thickness, bin_split_thickness, num_cols, num_rows, has_top_cap, color_hex, bin_heights = (
             group_data['num_bays'], group_data['bay_width'], group_data['total_height'],
             group_data['ground_clearance'], group_data['shelf_thickness'], group_data['side_panel_thickness'],
-            group_data['num_cols'], group_data['num_rows'], group_data['has_top_cap'],
+            group_data['bin_split_thickness'], group_data['num_cols'], group_data['num_rows'], group_data['has_top_cap'],
             group_data['color'], group_data['bin_heights']
         )
-        bin_split_thickness = shelf_thickness
+
+        # Normalize visual thickness for PowerPoint
+        visual_shelf_thickness = min(shelf_thickness, 30.0)  # Cap at 30 mm for visual rendering
+        visual_bin_split_thickness = min(bin_split_thickness, 30.0)  # Cap at 30 mm for visual rendering
 
         # --- Define Drawing Area and Scale on Slide ---
         canvas_left, canvas_top, canvas_width, canvas_height = Inches(1.5), Inches(1), Inches(7), Inches(5.5)
@@ -284,7 +293,7 @@ def create_editable_powerpoint(bay_groups):
         current_x_mm = side_panel_thickness
 
         for bay_idx in range(num_bays):
-            net_width_per_bay = bay_width
+            net_width_per_bay = bay_width - side_panel_thickness
             total_internal_dividers = (num_cols - 1) * bin_split_thickness
             bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
 
@@ -292,7 +301,7 @@ def create_editable_powerpoint(bay_groups):
             if num_cols > 1:
                 for i in range(1, num_cols):
                     split_x_mm = bin_start_x_mm + (i * bin_width) + ((i-1) * bin_split_thickness)
-                    add_shape(split_x_mm, ground_clearance, bin_split_thickness, structure_height, color_hex)
+                    add_shape(split_x_mm, ground_clearance, visual_bin_split_thickness, structure_height, color_hex)
             
             for i in range(num_cols):
                 dim_start_x = canvas_left + (bin_start_x_mm + i * (bin_width + bin_split_thickness)) * scale
@@ -307,8 +316,8 @@ def create_editable_powerpoint(bay_groups):
         current_y_mm = ground_clearance
         for i in range(num_rows):
             shelf_bottom_y = current_y_mm
-            add_shape(0, shelf_bottom_y, total_group_width, shelf_thickness, color_hex)
-            shelf_top_y = shelf_bottom_y + shelf_thickness
+            add_shape(0, shelf_bottom_y, total_group_width, visual_shelf_thickness, color_hex)
+            shelf_top_y = shelf_bottom_y + shelf_thickness  # Use actual thickness for positioning
             
             if i < len(bin_heights):
                 net_bin_h = bin_heights[i]
@@ -327,7 +336,7 @@ def create_editable_powerpoint(bay_groups):
                 current_y_mm += shelf_thickness + net_bin_h
 
         if has_top_cap:
-            add_shape(0, total_height - shelf_thickness, total_group_width, shelf_thickness, color_hex)
+            add_shape(0, total_height - visual_shelf_thickness, total_group_width, visual_shelf_thickness, color_hex)
 
         total_w_y = canvas_top + canvas_height + pt_to_emu(20)
         add_dimension(canvas_left, total_w_y, canvas_left + total_group_width * scale, total_w_y, f"Total Width: {total_group_width:.0f} mm")
@@ -351,6 +360,7 @@ if 'bay_groups' not in st.session_state:
         "ground_clearance": 50.0,
         "shelf_thickness": 18.0,
         "side_panel_thickness": 18.0,
+        "bin_split_thickness": 18.0,
         "num_cols": 4,
         "num_rows": 5,
         "has_top_cap": True,
@@ -467,8 +477,28 @@ with st.sidebar.expander("Individual Net Bin Heights", expanded=True):
         update_total_height()
 
 with st.sidebar.expander("Materials & Appearance", expanded=True):
-    group_data['shelf_thickness'] = st.number_input("Shelf Thickness (mm)", min_value=1.0, value=float(group_data['shelf_thickness']), key=f"shelf_thick_{group_data['id']}", on_change=update_total_height, help="Thickness of shelves in millimeters.")
-    group_data['side_panel_thickness'] = st.number_input("Outer Side Panel Thickness (mm)", min_value=1.0, value=float(group_data['side_panel_thickness']), key=f"side_panel_thick_{group_data['id']}", help="Thickness of side panels.")
+    group_data['shelf_thickness'] = st.number_input(
+        "Shelf Thickness (mm)", 
+        min_value=1.0, 
+        value=float(group_data['shelf_thickness']), 
+        key=f"shelf_thick_{group_data['id']}", 
+        on_change=update_total_height, 
+        help="Thickness of horizontal shelves. Large values are used in calculations but rendered as 30 mm max for visual clarity."
+    )
+    group_data['bin_split_thickness'] = st.number_input(
+        "Bin Split Thickness (mm)", 
+        min_value=1.0, 
+        value=float(group_data['bin_split_thickness']), 
+        key=f"bin_split_thick_{group_data['id']}", 
+        help="Thickness of vertical bin dividers. Large values are used in calculations but rendered as 30 mm max for visual clarity."
+    )
+    group_data['side_panel_thickness'] = st.number_input(
+        "Outer Side Panel Thickness (mm)", 
+        min_value=1.0, 
+        value=float(group_data['side_panel_thickness']), 
+        key=f"side_panel_thick_{group_data['id']}", 
+        help="Thickness of side panels."
+    )
     group_data['color'] = st.color_picker("Structure Color", value=group_data['color'], key=f"color_{group_data['id']}", help="Color of the structure.")
     group_data['zoom'] = st.slider("Zoom", 1.0, 5.0, group_data.get('zoom', 1.0), 0.1, key=f"zoom_{group_data['id']}", help="Adjust zoom level for the preview.")
 

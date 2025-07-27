@@ -78,7 +78,7 @@ def draw_bay_group(params):
     core_width = num_bays * bay_width
     total_group_width = core_width + (2 * side_panel_thickness)
     dim_offset_x = 0.05 * core_width
-    dim_offset_y = 0.05 * total_height  # Define here to fix NameError
+    dim_offset_y = 0.05 * total_height
     
     fig, ax = plt.subplots(figsize=(12, 12))
 
@@ -403,17 +403,25 @@ def distribute_total_height():
         for i in unlocked_indices:
             active_group['bin_heights'][i] = uniform_net_h
 
+def update_total_height():
+    """Update total_height based on bin heights, shelf thickness, and ground clearance."""
+    active_group = st.session_state.bay_groups[active_group_idx]
+    num_shelves_for_calc = active_group['num_rows'] + (1 if active_group['has_top_cap'] else 0)
+    total_shelf_thickness = num_shelves_for_calc * active_group['shelf_thickness']
+    total_net_bin_h = sum(active_group['bin_heights'])
+    active_group['total_height'] = total_net_bin_h + total_shelf_thickness + active_group['ground_clearance']
+
 # --- Configuration Inputs ---
 with st.sidebar.expander("Structure", expanded=True):
     group_data['num_bays'] = st.number_input("Number of Bays in Group", min_value=1, value=int(group_data['num_bays']), key=f"num_bays_{group_data['id']}", help="Number of bays in the group.")
     group_data['bay_width'] = st.number_input("Width per Bay (mm)", min_value=1.0, value=float(group_data['bay_width']), key=f"bay_width_{group_data['id']}", help="Width of each bay in millimeters.")
     group_data['total_height'] = st.number_input("Target Total Height (mm)", min_value=1.0, value=float(group_data['total_height']), key=f"total_height_{group_data['id']}", on_change=distribute_total_height, help="Set to automatically distribute height among unlocked bins.")
-    group_data['ground_clearance'] = st.number_input("Ground Clearance (mm)", min_value=0.0, value=float(group_data['ground_clearance']), key=f"ground_clearance_{group_data['id']}", help="Height from ground to first shelf.")
-    group_data['has_top_cap'] = st.checkbox("Add Top Cap", value=group_data['has_top_cap'], key=f"has_top_cap_{group_data['id']}", help="Include a top cap shelf.")
+    group_data['ground_clearance'] = st.number_input("Ground Clearance (mm)", min_value=0.0, value=float(group_data['ground_clearance']), key=f"ground_clearance_{group_data['id']}", on_change=update_total_height, help="Height from ground to first shelf.")
+    group_data['has_top_cap'] = st.checkbox("Add Top Cap", value=group_data['has_top_cap'], key=f"has_top_cap_{group_data['id']}", on_change=update_total_height, help="Include a top cap shelf.")
 
 with st.sidebar.expander("Layout", expanded=True):
     prev_num_rows = group_data['num_rows']
-    group_data['num_rows'] = st.number_input("Shelves (Rows)", min_value=1, value=int(group_data['num_rows']), key=f"num_rows_{group_data['id']}", help="Number of horizontal shelves.")
+    group_data['num_rows'] = st.number_input("Shelves (Rows)", min_value=1, value=int(group_data['num_rows']), key=f"num_rows_{group_data['id']}", on_change=update_total_height, help="Number of horizontal shelves.")
     group_data['num_cols'] = st.number_input("Bin-Split (Columns)", min_value=1, value=int(group_data['num_cols']), key=f"num_cols_{group_data['id']}", help="Number of vertical bin splits per bay.")
 
     # Adjust bin_heights and lock_heights if num_rows changes
@@ -427,7 +435,7 @@ with st.sidebar.expander("Layout", expanded=True):
             # Trim excess
             group_data['bin_heights'] = group_data['bin_heights'][:group_data['num_rows']]
             group_data['lock_heights'] = group_data['lock_heights'][:group_data['num_rows']]
-        distribute_total_height()
+        update_total_height()
 
 with st.sidebar.expander("Individual Net Bin Heights", expanded=True):
     auto_distribute = st.checkbox("Auto-distribute Heights", value=True, key=f"auto_distribute_{group_data['id']}", help="Automatically distribute heights among unlocked bins.")
@@ -443,10 +451,11 @@ with st.sidebar.expander("Individual Net Bin Heights", expanded=True):
                 min_value=1.0,
                 value=float(group_data['bin_heights'][j]),
                 key=f"level_{group_data['id']}_{j}",
-                disabled=auto_distribute and not group_data['lock_heights'][j]
+                disabled=auto_distribute and not group_data['lock_heights'][j],
+                on_change=update_total_height
             )
         with col2:
-            locked = st.checkbox("Lock", value=group_data['lock_heights'][j], key=f"lock_{group_data['id']}_{j}", help="Lock this height to prevent auto-distribution.")
+            locked = st.checkbox("Lock", value=group_data['lock_heights'][j], key=f"lock_{group_data['id']}_{j}", help="Lock this height to prevent auto-distribution.", on_change=update_total_height)
         current_bin_heights.append(height)
         current_lock_heights.append(locked)
     
@@ -454,9 +463,11 @@ with st.sidebar.expander("Individual Net Bin Heights", expanded=True):
     group_data['lock_heights'] = current_lock_heights
     if auto_distribute:
         distribute_total_height()
+    else:
+        update_total_height()
 
 with st.sidebar.expander("Materials & Appearance", expanded=True):
-    group_data['shelf_thickness'] = st.number_input("Shelf Thickness (mm)", min_value=1.0, value=float(group_data['shelf_thickness']), key=f"shelf_thick_{group_data['id']}", help="Thickness of shelves in millimeters.")
+    group_data['shelf_thickness'] = st.number_input("Shelf Thickness (mm)", min_value=1.0, value=float(group_data['shelf_thickness']), key=f"shelf_thick_{group_data['id']}", on_change=update_total_height, help="Thickness of shelves in millimeters.")
     group_data['side_panel_thickness'] = st.number_input("Outer Side Panel Thickness (mm)", min_value=1.0, value=float(group_data['side_panel_thickness']), key=f"side_panel_thick_{group_data['id']}", help="Thickness of side panels.")
     group_data['color'] = st.color_picker("Structure Color", value=group_data['color'], key=f"color_{group_data['id']}", help="Color of the structure.")
     group_data['zoom'] = st.slider("Zoom", 1.0, 5.0, group_data.get('zoom', 1.0), 0.1, key=f"zoom_{group_data['id']}", help="Adjust zoom level for the preview.")
@@ -472,7 +483,6 @@ num_shelves_for_calc = group_data['num_rows'] + (1 if group_data['has_top_cap'] 
 total_shelf_h = num_shelves_for_calc * group_data['shelf_thickness']
 calculated_total_height = total_net_bin_h + total_shelf_h + group_data['ground_clearance']
 st.sidebar.metric("Calculated Total Height", f"{calculated_total_height:.1f} mm")
-group_data['total_height'] = calculated_total_height
 
 # --- Main Area for Drawing ---
 st.header(f"Generated Design for: {group_data['name']}")

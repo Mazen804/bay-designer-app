@@ -356,7 +356,6 @@ if 'bay_groups' not in st.session_state:
         "has_top_cap": True,
         "color": "#4A90E2",
         "bin_heights": [350.0] * 5,
-        "zoom": 1.0,
         "lock_heights": [False] * 5
     }]
 
@@ -389,8 +388,6 @@ selected_group_name = st.sidebar.selectbox("Select Group to Edit", group_names, 
 active_group_idx = group_names.index(selected_group_name)
 group_data = st.session_state.bay_groups[active_group_idx]
 
-st.sidebar.header(f"Configuration for: {group_data['name']}")
-
 # --- Dynamic Height Calculation Callbacks ---
 def distribute_total_height():
     active_group = st.session_state.bay_groups[active_group_idx]
@@ -405,7 +402,6 @@ def distribute_total_height():
         uniform_net_h = available_space / num_unlocked
         for i in unlocked_indices:
             active_group['bin_heights'][i] = uniform_net_h
-            st.session_state[f"level_{active_group['id']}_{i}"] = uniform_net_h
 
 # --- Configuration Inputs ---
 with st.sidebar.expander("Structure", expanded=True):
@@ -416,16 +412,26 @@ with st.sidebar.expander("Structure", expanded=True):
     group_data['has_top_cap'] = st.checkbox("Add Top Cap", value=group_data['has_top_cap'], key=f"has_top_cap_{group_data['id']}", help="Include a top cap shelf.")
 
 with st.sidebar.expander("Layout", expanded=True):
+    prev_num_rows = group_data['num_rows']
     group_data['num_rows'] = st.number_input("Shelves (Rows)", min_value=1, value=int(group_data['num_rows']), key=f"num_rows_{group_data['id']}", help="Number of horizontal shelves.")
     group_data['num_cols'] = st.number_input("Bin-Split (Columns)", min_value=1, value=int(group_data['num_cols']), key=f"num_cols_{group_data['id']}", help="Number of vertical bin splits per bay.")
 
-with st.sidebar.expander("Individual Net Bin Heights", expanded=True):
-    auto_distribute = st.checkbox("Auto-distribute Heights", value=True, key=f"auto_distribute_{group_data['id']}", help="Automatically distribute heights among unlocked bins.")
-    if len(group_data['bin_heights']) != group_data['num_rows']:
-        group_data['bin_heights'] = [group_data['bin_heights'][0]] * group_data['num_rows']
-        group_data['lock_heights'] = [False] * group_data['num_rows']
+    # Adjust bin_heights and lock_heights if num_rows changes
+    if prev_num_rows != group_data['num_rows']:
+        if group_data['num_rows'] > len(group_data['bin_heights']):
+            # Extend with default values
+            default_height = group_data['bin_heights'][0] if group_data['bin_heights'] else 350.0
+            group_data['bin_heights'].extend([default_height] * (group_data['num_rows'] - len(group_data['bin_heights'])))
+            group_data['lock_heights'].extend([False] * (group_data['num_rows'] - len(group_data['lock_heights'])))
+        else:
+            # Trim excess
+            group_data['bin_heights'] = group_data['bin_heights'][:group_data['num_rows']]
+            group_data['lock_heights'] = group_data['lock_heights'][:group_data['num_rows']]
         distribute_total_height()
 
+with st.sidebar.expander("Individual Net Bin Heights", expanded=True):
+    auto_distribute = st.checkbox("Auto-distribute Heights", value=True, key=f"auto_distribute_{group_data['id']}", help="Automatically distribute heights among unlocked bins.")
+    
     current_bin_heights = []
     current_lock_heights = []
     for j in range(group_data['num_rows']):

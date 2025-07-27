@@ -45,7 +45,7 @@ def validate_group_params(params):
         errors.append("Shelf thickness must be positive.")
     if params['side_panel_thickness'] <= 0:
         errors.append("Side panel thickness must be positive.")
-    if params['bin_split_thickness'] <= 0:
+    if params.get('bin_split_thickness', 0) <= 0:
         errors.append("Bin split thickness must be positive.")
     if params['num_cols'] < 1:
         errors.append("Number of columns must be at least 1.")
@@ -369,6 +369,11 @@ if 'bay_groups' not in st.session_state:
         "lock_heights": [False] * 5
     }]
 
+# Migrate existing groups to include bin_split_thickness
+for group in st.session_state.bay_groups:
+    if 'bin_split_thickness' not in group:
+        group['bin_split_thickness'] = 18.0  # Default value for existing groups
+
 # --- Sidebar Controls ---
 st.sidebar.header("Manage Bay Groups")
 
@@ -383,6 +388,7 @@ with st.sidebar.expander("Add New Group", expanded=True):
                 new_group = st.session_state.bay_groups[0].copy()
                 new_group['id'] = str(uuid.uuid4())
                 new_group['name'] = new_group_name
+                new_group['bin_split_thickness'] = 18.0  # Ensure new groups have bin_split_thickness
                 st.session_state.bay_groups.append(new_group)
                 st.rerun()
 
@@ -488,7 +494,7 @@ with st.sidebar.expander("Materials & Appearance", expanded=True):
     group_data['bin_split_thickness'] = st.number_input(
         "Bin Split Thickness (mm)", 
         min_value=1.0, 
-        value=float(group_data['bin_split_thickness']), 
+        value=float(group_data.get('bin_split_thickness', 18.0)), 
         key=f"bin_split_thick_{group_data['id']}", 
         help="Thickness of vertical bin dividers. Large values are used in calculations but rendered as 30 mm max for visual clarity."
     )

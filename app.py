@@ -7,16 +7,12 @@ from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.enum.shapes import MSO_SHAPE
+import uuid
 
 # --- Page Configuration ---
 st.set_page_config(layout="wide", page_title="Storage Bay Designer")
 
-# --- Main Title ---
-st.title("Storage Bay Designer")
-st.markdown("Use the sidebar to manage and configure your bay groups. The design will update live in the main area.")
-
 # --- Helper Functions ---
-
 def hex_to_rgb(hex_color):
     """Converts a hex color string to an RGB tuple."""
     hex_color = hex_color.lstrip('#')
@@ -34,6 +30,33 @@ def draw_dimension_line(ax, x1, y1, x2, y2, text, is_vertical=False, offset=10, 
         ax.plot(x2, y2, marker='>', color=color, markersize=5)
         ax.text((x1 + x2) / 2, y1 + offset, text, va='bottom', ha='center', fontsize=fontsize, color=color)
 
+def validate_group_params(params):
+    """Validates bay group parameters and returns errors if any."""
+    errors = []
+    if params['num_bays'] < 1:
+        errors.append("Number of bays must be at least 1.")
+    if params['bay_width'] <= 0:
+        errors.append("Bay width must be positive.")
+    if params['total_height'] <= 0:
+        errors.append("Total height must be positive.")
+    if params['ground_clearance'] < 0:
+        errors.append("Ground clearance cannot be negative.")
+    if params['shelf_thickness'] <= 0:
+        errors.append("Shelf thickness must be positive.")
+    if params['side_panel_thickness'] <= 0:
+        errors.append("Side panel thickness must be positive.")
+    if params['num_cols'] < 1:
+        errors.append("Number of columns must be at least 1.")
+    if params['num_rows'] < 1:
+        errors.append("Number of rows must be at least 1.")
+    total_net_bin_h = sum(params['bin_heights'])
+    num_shelves = params['num_rows'] + (1 if params['has_top_cap'] else 0)
+    required_height = total_net_bin_h + num_shelves * params['shelf_thickness'] + params['ground_clearance']
+    if abs(required_height - params['total_height']) > 0.1:
+        errors.append(f"Calculated height ({required_height:.1f} mm) does not match target height ({params['total_height']:.1f} mm).")
+    return errors
+
+@st.cache_data
 def draw_bay_group(params):
     """Main function to draw a group of bays using Matplotlib for the LIVE PREVIEW."""
     # Unpack parameters
@@ -57,83 +80,89 @@ def draw_bay_group(params):
     
     fig, ax = plt.subplots(figsize=(12, 12))
 
-    # --- Draw Structure using a stable coordinate system ---
-    # The core bays are drawn from x=0 to x=core_width. Side panels are drawn in the negative and positive space around this.
-    structure_height = total_height - ground_clearance
-    
-    # Left side panel
-    ax.add_patch(patches.Rectangle((-side_panel_thickness, 0), side_panel_thickness, total_height, facecolor=color))
-    # Right side panel
-    ax.add_patch(patches.Rectangle((core_width, 0), side_panel_thickness, total_height, facecolor=color))
+    # --- Draw Side Panels ---
+    def draw_side_panels():
+        ax.add_patch(patches.Rectangle((-side_panel_thickness, 0), side_panel_thickness, total_height, facecolor=color))
+        ax.add_patch(patches.Rectangle((core_width, 0), side_panel_thickness, total_height, facecolor=color))
 
-    current_x = 0
-    for bay_idx in range(num_bays):
-        net_width_per_bay = bay_width
-        total_internal_dividers = (num_cols - 1) * bin_split_thickness
-        bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
-
-        bin_start_x = current_x
-        if num_cols > 1:
-            for i in range(1, num_cols):
-                split_x = bin_start_x + (i * bin_width) + ((i-1) * bin_split_thickness)
-                ax.add_patch(patches.Rectangle((split_x, ground_clearance), bin_split_thickness, structure_height, facecolor=color))
-        
-        if bay_idx < num_bays - 1:
-             divider_x = current_x + bay_width
-             ax.plot([divider_x, divider_x], [ground_clearance, structure_height], color='#aaaaaa', lw=1, linestyle='--')
-
-        current_x += bay_width
-
-    # --- Draw Horizontal Shelves & Bin Height Dimensions ---
-    current_y = ground_clearance
-    dim_offset_x = 0.05 * core_width
-    pitch_offset_x = dim_offset_x * 2.5
-
-    for i in range(num_rows):
-        shelf_bottom_y = current_y
-        ax.add_patch(patches.Rectangle((-side_panel_thickness, shelf_bottom_y), total_group_width, shelf_thickness, facecolor=color))
-        shelf_top_y = shelf_bottom_y + shelf_thickness
-        
-        if i < len(bin_heights):
-            net_bin_h = bin_heights[i]
-            pitch_h = net_bin_h + shelf_thickness
-            level_name = chr(65 + i)
-            
-            bin_bottom_y = shelf_top_y
-            bin_top_y = bin_bottom_y + net_bin_h
-            draw_dimension_line(ax, core_width + side_panel_thickness + dim_offset_x, bin_bottom_y, core_width + side_panel_thickness + dim_offset_x, bin_top_y, f"{net_bin_h:.1f}", is_vertical=True, offset=5, color='#3b82f6')
-            
-            pitch_top_y = shelf_bottom_y + pitch_h
-            draw_dimension_line(ax, core_width + side_panel_thickness + pitch_offset_x, shelf_bottom_y, core_width + side_panel_thickness + pitch_offset_x, pitch_top_y, f"{pitch_h:.1f}", is_vertical=True, offset=5, color='black')
-
-            ax.text(-side_panel_thickness - dim_offset_x, (bin_bottom_y + bin_top_y) / 2, level_name, va='center', ha='center', fontsize=12, fontweight='bold')
-            
-            current_y = bin_top_y
-
-    if has_top_cap:
-        ax.add_patch(patches.Rectangle((-side_panel_thickness, total_height - shelf_thickness), total_group_width, shelf_thickness, facecolor=color))
-
-    # --- Draw Main Dimension Lines ---
-    dim_offset_y = 0.05 * total_height
-    draw_dimension_line(ax, -side_panel_thickness, -dim_offset_y * 2, core_width + side_panel_thickness, -dim_offset_y * 2, f"Total Group Width: {total_group_width:.0f} mm", offset=10)
-    draw_dimension_line(ax, -side_panel_thickness - (dim_offset_x * 4), 0, -side_panel_thickness - (dim_offset_x * 4), total_height, f"Total Height: {total_height:.0f} mm", is_vertical=True, offset=10)
-
-    # --- Draw Bin Width Dimensions above the bay ---
-    if num_cols > 0:
-        dim_y_pos = total_height + dim_offset_y
-        loop_current_x = 0
+    # --- Draw Bays ---
+    def draw_bays():
+        current_x = 0
         for bay_idx in range(num_bays):
             net_width_per_bay = bay_width
             total_internal_dividers = (num_cols - 1) * bin_split_thickness
             bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
+
+            bin_start_x = current_x
+            if num_cols > 1:
+                for i in range(1, num_cols):
+                    split_x = bin_start_x + (i * bin_width) + ((i-1) * bin_split_thickness)
+                    ax.add_patch(patches.Rectangle((split_x, ground_clearance), bin_split_thickness, structure_height, facecolor=color))
             
-            bin_start_x = loop_current_x
-            for i in range(num_cols):
-                dim_start_x = bin_start_x + (i * (bin_width + bin_split_thickness))
-                dim_end_x = dim_start_x + bin_width
-                draw_dimension_line(ax, dim_start_x, dim_y_pos, dim_end_x, dim_y_pos, f"{bin_width:.1f}", offset=10, color='#3b82f6')
+            if bay_idx < num_bays - 1:
+                divider_x = current_x + bay_width
+                ax.plot([divider_x, divider_x], [ground_clearance, structure_height], color='#aaaaaa', lw=1, linestyle='--')
+
+            current_x += bay_width
+
+    # --- Draw Shelves and Dimensions ---
+    def draw_shelves_and_dimensions():
+        current_y = ground_clearance
+        dim_offset_x = 0.05 * core_width
+        pitch_offset_x = dim_offset_x * 2.5
+
+        for i in range(num_rows):
+            shelf_bottom_y = current_y
+            ax.add_patch(patches.Rectangle((-side_panel_thickness, shelf_bottom_y), total_group_width, shelf_thickness, facecolor=color))
+            shelf_top_y = shelf_bottom_y + shelf_thickness
             
-            loop_current_x += bay_width
+            if i < len(bin_heights):
+                net_bin_h = bin_heights[i]
+                pitch_h = net_bin_h + shelf_thickness
+                level_name = chr(65 + i)
+                
+                bin_bottom_y = shelf_top_y
+                bin_top_y = bin_bottom_y + net_bin_h
+                draw_dimension_line(ax, core_width + side_panel_thickness + dim_offset_x, bin_bottom_y, core_width + side_panel_thickness + dim_offset_x, bin_top_y, f"{net_bin_h:.1f}", is_vertical=True, offset=5, color='#3b82f6')
+                
+                pitch_top_y = shelf_bottom_y + pitch_h
+                draw_dimension_line(ax, core_width + side_panel_thickness + pitch_offset_x, shelf_bottom_y, core_width + side_panel_thickness + pitch_offset_x, pitch_top_y, f"{pitch_h:.1f}", is_vertical=True, offset=5, color='black')
+
+                ax.text(-side_panel_thickness - dim_offset_x, (bin_bottom_y + bin_top_y) / 2, level_name, va='center', ha='center', fontsize=12, fontweight='bold')
+                
+                current_y = bin_top_y
+
+        if has_top_cap:
+            ax.add_patch(patches.Rectangle((-side_panel_thickness, total_height - shelf_thickness), total_group_width, shelf_thickness, facecolor=color))
+
+    # --- Draw Main Dimensions ---
+    def draw_main_dimensions():
+        dim_offset_y = 0.05 * total_height
+        draw_dimension_line(ax, -side_panel_thickness, -dim_offset_y * 2, core_width + side_panel_thickness, -dim_offset_y * 2, f"Total Group Width: {total_group_width:.0f} mm", offset=10)
+        draw_dimension_line(ax, -side_panel_thickness - (dim_offset_x * 4), 0, -side_panel_thickness - (dim_offset_x * 4), total_height, f"Total Height: {total_height:.0f} mm", is_vertical=True, offset=10)
+
+        if num_cols > 0:
+            dim_y_pos = total_height + dim_offset_y
+            loop_current_x = 0
+            for bay_idx in range(num_bays):
+                net_width_per_bay = bay_width
+                total_internal_dividers = (num_cols - 1) * bin_split_thickness
+                bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
+                
+                bin_start_x = loop_current_x
+                for i in range(num_cols):
+                    dim_start_x = bin_start_x + (i * (bin_width + bin_split_thickness))
+                    dim_end_x = dim_start_x + bin_width
+                    draw_dimension_line(ax, dim_start_x, dim_y_pos, dim_end_x, dim_y_pos, f"{bin_width:.1f}", offset=10, color='#3b82f6')
+                
+                loop_current_x += bay_width
+
+    # --- Execute Drawing ---
+    structure_height = total_height - ground_clearance
+    draw_side_panels()
+    draw_bays()
+    draw_shelves_and_dimensions()
+    draw_main_dimensions()
 
     # --- Final Touches ---
     ax.set_aspect('equal', adjustable='box')
@@ -144,12 +173,56 @@ def draw_bay_group(params):
     
     return fig
 
+def create_summary_slide(prs, bay_groups):
+    """Creates a summary slide with a bill of materials."""
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    title_shape = slide.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(9), Inches(0.5))
+    title_shape.text = "Bill of Materials"
+    
+    table_left, table_top, table_width, table_height = Inches(1), Inches(1), Inches(8), Inches(4)
+    table = slide.shapes.add_table(2 + len(bay_groups), 4, table_left, table_top, table_width, table_height).table
+    
+    table.columns[0].width = Inches(2)
+    table.columns[1].width = Inches(2)
+    table.columns[2].width = Inches(2)
+    table.columns[3].width = Inches(2)
+    
+    table.cell(0, 0).text = "Group Name"
+    table.cell(0, 1).text = "Side Panels"
+    table.cell(0, 2).text = "Shelves"
+    table.cell(0, 3).text = "Bin Dividers"
+    
+    total_side_panels = 0
+    total_shelves = 0
+    total_dividers = 0
+    
+    for i, group in enumerate(bay_groups, 1):
+        side_panels = 2
+        shelves = group['num_rows'] + (1 if group['has_top_cap'] else 0)
+        dividers = (group['num_cols'] - 1) * group['num_bays']
+        
+        table.cell(i, 0).text = group['name']
+        table.cell(i, 1).text = str(side_panels)
+        table.cell(i, 2).text = str(shelves)
+        table.cell(i, 3).text = str(dividers)
+        
+        total_side_panels += side_panels
+        total_shelves += shelves
+        total_dividers += dividers
+    
+    table.cell(len(bay_groups) + 1, 0).text = "Total"
+    table.cell(len(bay_groups) + 1, 1).text = str(total_side_panels)
+    table.cell(len(bay_groups) + 1, 2).text = str(total_shelves)
+    table.cell(len(bay_groups) + 1, 3).text = str(total_dividers)
+
 def create_editable_powerpoint(bay_groups):
     """Creates a PowerPoint presentation from bay group data using native shapes."""
     prs = Presentation()
     
+    create_summary_slide(prs, bay_groups)
+    
     for group_data in bay_groups:
-        slide = prs.slides.add_slide(prs.slide_layouts[6]) # Blank layout
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
         
         title_shape = slide.shapes.add_textbox(Inches(0.5), Inches(0.2), Inches(9), Inches(0.5))
         title_shape.text = f"Design for: {group_data['name']}"
@@ -205,7 +278,7 @@ def create_editable_powerpoint(bay_groups):
             p.alignment = PP_ALIGN.CENTER
             textbox.text_frame.auto_size = MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
 
-        # --- Draw Structure using PPTX Shapes ---
+        # --- Draw Structure ---
         structure_height = total_height - ground_clearance
         add_shape(0, 0, side_panel_thickness, total_height, color_hex)
         current_x_mm = side_panel_thickness
@@ -270,34 +343,49 @@ def create_editable_powerpoint(bay_groups):
 # --- Initialize Session State ---
 if 'bay_groups' not in st.session_state:
     st.session_state.bay_groups = [{
-        "name": "Group A", "num_bays": 2, "bay_width": 1050.0, "total_height": 2000.0,
-        "ground_clearance": 50.0, "shelf_thickness": 18.0, "side_panel_thickness": 18.0,
-        "num_cols": 4, "num_rows": 5, "has_top_cap": True, "color": "#4A90E2",
+        "id": str(uuid.uuid4()),
+        "name": "Group A",
+        "num_bays": 2,
+        "bay_width": 1050.0,
+        "total_height": 2000.0,
+        "ground_clearance": 50.0,
+        "shelf_thickness": 18.0,
+        "side_panel_thickness": 18.0,
+        "num_cols": 4,
+        "num_rows": 5,
+        "has_top_cap": True,
+        "color": "#4A90E2",
         "bin_heights": [350.0] * 5,
-        "zoom": 1.0
+        "zoom": 1.0,
+        "lock_heights": [False] * 5
     }]
 
 # --- Sidebar Controls ---
 st.sidebar.header("Manage Bay Groups")
 
-with st.sidebar.form("new_group_form"):
-    new_group_name = st.text_input("New Group Name", "New Group")
-    add_group_submitted = st.form_submit_button("Add Group")
-    if add_group_submitted:
-        new_group = st.session_state.bay_groups[0].copy()
-        new_group['name'] = new_group_name
-        st.session_state.bay_groups.append(new_group)
-        st.rerun()
+with st.sidebar.expander("Add New Group", expanded=True):
+    with st.form("new_group_form"):
+        new_group_name = st.text_input("New Group Name", "New Group", help="Enter a unique name for the new bay group.")
+        add_group_submitted = st.form_submit_button("Add Group")
+        if add_group_submitted:
+            if any(g['name'] == new_group_name for g in st.session_state.bay_groups):
+                st.error("Group name must be unique.")
+            else:
+                new_group = st.session_state.bay_groups[0].copy()
+                new_group['id'] = str(uuid.uuid4())
+                new_group['name'] = new_group_name
+                st.session_state.bay_groups.append(new_group)
+                st.rerun()
 
 if len(st.session_state.bay_groups) > 1:
-    if st.sidebar.button("Remove Last Group"):
+    if st.sidebar.button("Remove Last Group", help="Removes the most recently added group."):
         st.session_state.bay_groups.pop()
         st.rerun()
 
 st.sidebar.markdown("---")
 
 group_names = [g['name'] for g in st.session_state.bay_groups]
-selected_group_name = st.sidebar.selectbox("Select Group to Edit", group_names)
+selected_group_name = st.sidebar.selectbox("Select Group to Edit", group_names, help="Choose a group to modify its settings.")
 active_group_idx = group_names.index(selected_group_name)
 group_data = st.session_state.bay_groups[active_group_idx]
 
@@ -310,40 +398,67 @@ def distribute_total_height():
     total_shelf_thickness = num_shelves_for_calc * active_group['shelf_thickness']
     available_space = active_group['total_height'] - active_group['ground_clearance'] - total_shelf_thickness
     
-    if available_space > 0 and active_group['num_rows'] > 0:
-        uniform_net_h = available_space / active_group['num_rows']
-        active_group['bin_heights'] = [uniform_net_h] * active_group['num_rows']
-        for j in range(active_group['num_rows']):
-            st.session_state[f"level_{active_group_idx}_{j}"] = uniform_net_h
+    unlocked_indices = [i for i, locked in enumerate(active_group['lock_heights']) if not locked]
+    num_unlocked = len(unlocked_indices)
+    
+    if available_space > 0 and num_unlocked > 0:
+        uniform_net_h = available_space / num_unlocked
+        for i in unlocked_indices:
+            active_group['bin_heights'][i] = uniform_net_h
+            st.session_state[f"level_{active_group['id']}_{i}"] = uniform_net_h
 
 # --- Configuration Inputs ---
-st.sidebar.subheader("Structure")
-group_data['num_bays'] = st.sidebar.number_input("Number of Bays in Group", min_value=1, value=int(group_data['num_bays']), key=f"num_bays_{active_group_idx}")
-group_data['bay_width'] = st.sidebar.number_input("Width per Bay (mm)", min_value=1.0, value=float(group_data['bay_width']), key=f"bay_width_{active_group_idx}")
-group_data['total_height'] = st.sidebar.number_input("Target Total Height (mm)", min_value=1.0, value=float(group_data['total_height']), key=f"total_height_{active_group_idx}", on_change=distribute_total_height, help="Set this to automatically distribute height among bins.")
-group_data['ground_clearance'] = st.sidebar.number_input("Ground Clearance (mm)", min_value=0.0, value=float(group_data['ground_clearance']), key=f"ground_clearance_{active_group_idx}")
-group_data['has_top_cap'] = st.sidebar.checkbox("Add Top Cap", value=group_data['has_top_cap'], key=f"has_top_cap_{active_group_idx}")
+with st.sidebar.expander("Structure", expanded=True):
+    group_data['num_bays'] = st.number_input("Number of Bays in Group", min_value=1, value=int(group_data['num_bays']), key=f"num_bays_{group_data['id']}", help="Number of bays in the group.")
+    group_data['bay_width'] = st.number_input("Width per Bay (mm)", min_value=1.0, value=float(group_data['bay_width']), key=f"bay_width_{group_data['id']}", help="Width of each bay in millimeters.")
+    group_data['total_height'] = st.number_input("Target Total Height (mm)", min_value=1.0, value=float(group_data['total_height']), key=f"total_height_{group_data['id']}", on_change=distribute_total_height, help="Set to automatically distribute height among unlocked bins.")
+    group_data['ground_clearance'] = st.number_input("Ground Clearance (mm)", min_value=0.0, value=float(group_data['ground_clearance']), key=f"ground_clearance_{group_data['id']}", help="Height from ground to first shelf.")
+    group_data['has_top_cap'] = st.checkbox("Add Top Cap", value=group_data['has_top_cap'], key=f"has_top_cap_{group_data['id']}", help="Include a top cap shelf.")
 
-st.sidebar.subheader("Layout")
-group_data['num_rows'] = st.sidebar.number_input("Shelves (Rows)", min_value=1, value=int(group_data['num_rows']), key=f"num_rows_{active_group_idx}")
-group_data['num_cols'] = st.sidebar.number_input("Bin-Split (Columns)", min_value=1, value=int(group_data['num_cols']), key=f"num_cols_{active_group_idx}")
+with st.sidebar.expander("Layout", expanded=True):
+    group_data['num_rows'] = st.number_input("Shelves (Rows)", min_value=1, value=int(group_data['num_rows']), key=f"num_rows_{group_data['id']}", help="Number of horizontal shelves.")
+    group_data['num_cols'] = st.number_input("Bin-Split (Columns)", min_value=1, value=int(group_data['num_cols']), key=f"num_cols_{group_data['id']}", help="Number of vertical bin splits per bay.")
 
-st.sidebar.markdown("**Individual Net Bin Heights**")
-if len(group_data['bin_heights']) != group_data['num_rows']:
-    distribute_total_height()
+with st.sidebar.expander("Individual Net Bin Heights", expanded=True):
+    auto_distribute = st.checkbox("Auto-distribute Heights", value=True, key=f"auto_distribute_{group_data['id']}", help="Automatically distribute heights among unlocked bins.")
+    if len(group_data['bin_heights']) != group_data['num_rows']:
+        group_data['bin_heights'] = [group_data['bin_heights'][0]] * group_data['num_rows']
+        group_data['lock_heights'] = [False] * group_data['num_rows']
+        distribute_total_height()
 
-current_bin_heights = []
-for j in range(group_data['num_rows']):
-    level_name = chr(65 + j) # Level A, B, C...
-    height = st.sidebar.number_input(f"Level {level_name} Net Height", min_value=1.0, value=float(group_data['bin_heights'][j]), key=f"level_{active_group_idx}_{j}")
-    current_bin_heights.append(height)
-group_data['bin_heights'] = current_bin_heights
+    current_bin_heights = []
+    current_lock_heights = []
+    for j in range(group_data['num_rows']):
+        level_name = chr(65 + j)
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            height = st.number_input(
+                f"Level {level_name} Net Height",
+                min_value=1.0,
+                value=float(group_data['bin_heights'][j]),
+                key=f"level_{group_data['id']}_{j}",
+                disabled=auto_distribute and not group_data['lock_heights'][j]
+            )
+        with col2:
+            locked = st.checkbox("Lock", value=group_data['lock_heights'][j], key=f"lock_{group_data['id']}_{j}", help="Lock this height to prevent auto-distribution.")
+        current_bin_heights.append(height)
+        current_lock_heights.append(locked)
+    
+    group_data['bin_heights'] = current_bin_heights
+    group_data['lock_heights'] = current_lock_heights
+    if auto_distribute:
+        distribute_total_height()
 
-st.sidebar.subheader("Materials & Appearance")
-group_data['shelf_thickness'] = st.sidebar.number_input("Shelf Thickness (mm)", min_value=1.0, value=float(group_data['shelf_thickness']), key=f"shelf_thick_{active_group_idx}")
-group_data['side_panel_thickness'] = st.sidebar.number_input("Outer Side Panel Thickness (mm)", min_value=1.0, value=float(group_data['side_panel_thickness']), key=f"side_panel_thick_{active_group_idx}")
-group_data['color'] = st.sidebar.color_picker("Structure Color", value=group_data['color'], key=f"color_{active_group_idx}")
-group_data['zoom'] = st.sidebar.slider("Zoom", 1.0, 5.0, group_data.get('zoom', 1.0), 0.1, key=f"zoom_{active_group_idx}", help="Increase to zoom out and see more area around the design.")
+with st.sidebar.expander("Materials & Appearance", expanded=True):
+    group_data['shelf_thickness'] = st.number_input("Shelf Thickness (mm)", min_value=1.0, value=float(group_data['shelf_thickness']), key=f"shelf_thick_{group_data['id']}", help="Thickness of shelves in millimeters.")
+    group_data['side_panel_thickness'] = st.number_input("Outer Side Panel Thickness (mm)", min_value=1.0, value=float(group_data['side_panel_thickness']), key=f"side_panel_thick_{group_data['id']}", help="Thickness of side panels.")
+    group_data['color'] = st.color_picker("Structure Color", value=group_data['color'], key=f"color_{group_data['id']}", help="Color of the structure.")
+    group_data['zoom'] = st.slider("Zoom", 1.0, 5.0, group_data.get('zoom', 1.0), 0.1, key=f"zoom_{group_data['id']}", help="Adjust zoom level for the preview.")
+
+# --- Validate Parameters ---
+errors = validate_group_params(group_data)
+if errors:
+    st.sidebar.error("Configuration Errors:\n" + "\n".join(f"- {e}" for e in errors))
 
 # --- Calculate and Display Final Height ---
 total_net_bin_h = sum(group_data['bin_heights'])
@@ -351,33 +466,35 @@ num_shelves_for_calc = group_data['num_rows'] + (1 if group_data['has_top_cap'] 
 total_shelf_h = num_shelves_for_calc * group_data['shelf_thickness']
 calculated_total_height = total_net_bin_h + total_shelf_h + group_data['ground_clearance']
 st.sidebar.metric("Calculated Total Height", f"{calculated_total_height:.1f} mm")
-group_data['total_height'] = calculated_total_height 
+group_data['total_height'] = calculated_total_height
 
 # --- Main Area for Drawing ---
 st.header(f"Generated Design for: {group_data['name']}")
-fig = draw_bay_group(group_data)
-st.pyplot(fig, use_container_width=True)
+if not errors:
+    fig = draw_bay_group(group_data)
+    st.pyplot(fig, use_container_width=True)
+else:
+    st.error("Please fix configuration errors to view the design.")
 
-# --- Global Download Button (FIXED) ---
+# --- Global Download Button ---
 st.sidebar.markdown("---")
 st.sidebar.header("Download All Designs")
 
-# Create a placeholder for the download button
 download_button_placeholder = st.sidebar.empty()
 
-if st.sidebar.button("Generate PPTX"):
-    # Recalculate all group heights before creating the buffer
+if st.sidebar.button("Generate PPTX", help="Generate a PowerPoint file with all designs and a bill of materials."):
+    has_errors = False
     for group in st.session_state.bay_groups:
-        total_net_bin_h = sum(group['bin_heights'])
-        num_shelves_for_calc = group['num_rows'] + (1 if group['has_top_cap'] else 0)
-        total_shelf_h = num_shelves_for_calc * group['shelf_thickness']
-        group['total_height'] = total_net_bin_h + total_shelf_h + group['ground_clearance']
-
-    ppt_buffer = create_editable_powerpoint(st.session_state.bay_groups)
+        if validate_group_params(group):
+            has_errors = True
+            st.error(f"Cannot generate PPTX due to errors in group: {group['name']}")
     
-    download_button_placeholder.download_button(
-        label="Download Now",
-        data=ppt_buffer,
-        file_name="all_bay_designs.pptx",
-        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-    )
+    if not has_errors:
+        ppt_buffer = create_editable_powerpoint(st.session_state.bay_groups)
+        download_button_placeholder.download_button(
+            label="Download Now",
+            data=ppt_buffer,
+            file_name="all_bay_designs.pptx",
+            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            help="Download the PowerPoint file containing all bay designs."
+        )

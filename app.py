@@ -77,7 +77,8 @@ def draw_bay_group(params):
     # --- Calculations ---
     core_width = num_bays * bay_width
     total_group_width = core_width + (2 * side_panel_thickness)
-    dim_offset_x = 0.05 * core_width  # Define here for access by all nested functions
+    dim_offset_x = 0.05 * core_width
+    dim_offset_y = 0.05 * total_height  # Define here to fix NameError
     
     fig, ax = plt.subplots(figsize=(12, 12))
 
@@ -137,7 +138,6 @@ def draw_bay_group(params):
 
     # --- Draw Main Dimensions ---
     def draw_main_dimensions():
-        dim_offset_y = 0.05 * total_height
         draw_dimension_line(ax, -side_panel_thickness, -dim_offset_y * 2, core_width + side_panel_thickness, -dim_offset_y * 2, f"Total Group Width: {total_group_width:.0f} mm", offset=10)
         draw_dimension_line(ax, -side_panel_thickness - (dim_offset_x * 4), 0, -side_panel_thickness - (dim_offset_x * 4), total_height, f"Total Height: {total_height:.0f} mm", is_vertical=True, offset=10)
 

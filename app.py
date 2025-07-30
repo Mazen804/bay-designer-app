@@ -2,12 +2,14 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import io
+import os
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.enum.shapes import MSO_SHAPE
 import uuid
+import tempfile
 
 # --- Page Configuration ---
 st.set_page_config(layout="wide", page_title="Storage Bay Designer")
@@ -77,9 +79,9 @@ def draw_bay_group(params):
     zoom_factor = params.get('zoom', 1.0)
 
     # Normalize visual thickness to prevent bulky appearance
-    visual_shelf_thickness = min(shelf_thickness, 30.0)  # Cap at 30 mm for visual rendering
-    visual_bin_split_thickness = min(bin_split_thickness, 30.0)  # Cap at 30 mm for visual rendering
-    visual_side_panel_thickness = max(side_panel_thickness, 5.0)  # Minimum 5 mm for visual rendering
+    visual_shelf_thickness = min(shelf_thickness, 18.0)  # Cap at 18 mm for visual rendering
+    visual_bin_split_thickness = min(bin_split_thickness, 18.0)  # Cap at 18 mm for visual rendering
+    visual_side_panel_thickness = max(side_panel_thickness, 10.0)  # Minimum 10 mm for visual rendering
 
     # --- Calculations ---
     core_width = num_bays * bay_width
@@ -98,7 +100,7 @@ def draw_bay_group(params):
     def draw_bays():
         current_x = 0
         for bay_idx in range(num_bays):
-            net_width_per_bay = bay_width - side_panel_thickness  # Use actual thickness for calculations
+            net_width_per_bay = bay_width - 2 * side_panel_thickness  # Account for both side panels
             total_internal_dividers = (num_cols - 1) * bin_split_thickness
             bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
 
@@ -152,7 +154,7 @@ def draw_bay_group(params):
             dim_y_pos = total_height + dim_offset_y
             loop_current_x = 0
             for bay_idx in range(num_bays):
-                net_width_per_bay = bay_width - side_panel_thickness
+                net_width_per_bay = bay_width - 2 * side_panel_thickness  # Account for both side panels
                 total_internal_dividers = (num_cols - 1) * bin_split_thickness
                 bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
                 
@@ -243,9 +245,9 @@ def create_editable_powerpoint(bay_groups):
         )
 
         # Normalize visual thickness for PowerPoint
-        visual_shelf_thickness = min(shelf_thickness, 30.0)  # Cap at 30 mm for visual rendering
-        visual_bin_split_thickness = min(bin_split_thickness, 30.0)  # Cap at 30 mm for visual rendering
-        visual_side_panel_thickness = max(side_panel_thickness, 5.0)  # Minimum 5 mm for visual rendering
+        visual_shelf_thickness = min(shelf_thickness, 18.0)  # Cap at 18 mm for visual rendering
+        visual_bin_split_thickness = min(bin_split_thickness, 18.0)  # Cap at 18 mm for visual rendering
+        visual_side_panel_thickness = max(side_panel_thickness, 10.0)  # Minimum 10 mm for visual rendering
 
         # --- Define Drawing Area and Scale on Slide ---
         canvas_left, canvas_top, canvas_width, canvas_height = Inches(1.5), Inches(1), Inches(7), Inches(5.5)
@@ -258,8 +260,8 @@ def create_editable_powerpoint(bay_groups):
         def add_shape(left_mm, top_mm, width_mm, height_mm, color_hex):
             left = canvas_left + left_mm * scale
             top = canvas_top + (total_height - top_mm - height_mm) * scale
-            width = max(width_mm * scale, Inches(0.01))  # Ensure minimum width
-            height = max(height_mm * scale, Inches(0.01))  # Ensure minimum height
+            width = max(width_mm * scale, Inches(0.02))  # Ensure minimum width
+            height = max(height_mm * scale, Inches(0.02))  # Ensure minimum height
             shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, height)
             shape.fill.solid()
             shape.fill.fore_color.rgb = RGBColor(*hex_to_rgb(color_hex))
@@ -269,7 +271,7 @@ def create_editable_powerpoint(bay_groups):
         def add_dimension(start_x, start_y, end_x, end_y, text, is_vertical=False):
             line = slide.shapes.add_connector(1, start_x, start_y, end_x, end_y)
             line.line.fill.solid()
-            line.line.fill.fore_color.rgb = RGBColor(0,0,0)
+            line.line.fill.fore_color.rgb = RGBColor(0, 0, 0)
             line.line.begin_arrow_type = 2
             line.line.end_arrow_type = 2
 
@@ -295,7 +297,7 @@ def create_editable_powerpoint(bay_groups):
         current_x_mm = visual_side_panel_thickness
 
         for bay_idx in range(num_bays):
-            net_width_per_bay = bay_width - side_panel_thickness  # Use actual thickness for calculations
+            net_width_per_bay = bay_width - 2 * side_panel_thickness  # Account for both side panels
             total_internal_dividers = (num_cols - 1) * bin_split_thickness
             bin_width = (net_width_per_bay - total_internal_dividers) / num_cols if num_cols > 0 else 0
 
@@ -346,8 +348,13 @@ def create_editable_powerpoint(bay_groups):
         total_h_x = canvas_left - pt_to_emu(40)
         add_dimension(total_h_x, canvas_top, total_h_x, canvas_top + total_height * scale, f"Total Height: {total_height:.0f} mm", is_vertical=True)
 
-    ppt_buf = io.BytesIO()
-    prs.save(ppt_buf)
+    # Save to temporary file for validation
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pptx") as tmp_file:
+        prs.save(tmp_file.name)
+        tmp_file.close()
+        with open(tmp_file.name, 'rb') as f:
+            ppt_buf = io.BytesIO(f.read())
+        os.unlink(tmp_file.name)  # Clean up temporary file
     ppt_buf.seek(0)
     return ppt_buf
 
@@ -491,21 +498,21 @@ with st.sidebar.expander("Materials & Appearance", expanded=True):
         value=float(group_data['shelf_thickness']), 
         key=f"shelf_thick_{group_data['id']}", 
         on_change=update_total_height, 
-        help="Thickness of horizontal shelves. Large values are used in calculations but rendered as 30 mm max for visual clarity."
+        help="Thickness of horizontal shelves. Large values are used in calculations but rendered as 18 mm max for visual clarity."
     )
     group_data['bin_split_thickness'] = st.number_input(
         "Bin Split Thickness (mm)", 
         min_value=1.0, 
         value=float(group_data.get('bin_split_thickness', 18.0)), 
         key=f"bin_split_thick_{group_data['id']}", 
-        help="Thickness of vertical bin dividers. Large values are used in calculations but rendered as 30 mm max for visual clarity."
+        help="Thickness of vertical bin dividers. Large values are used in calculations but rendered as 18 mm max for visual clarity."
     )
     group_data['side_panel_thickness'] = st.number_input(
         "Outer Side Panel Thickness (mm)", 
         min_value=1.0, 
         value=float(group_data['side_panel_thickness']), 
         key=f"side_panel_thick_{group_data['id']}", 
-        help="Thickness of side panels. A minimum visual thickness of 5 mm is used for rendering to ensure visibility."
+        help="Thickness of side panels. A minimum visual thickness of 10 mm is used for rendering to ensure visibility."
     )
     group_data['color'] = st.color_picker("Structure Color", value=group_data['color'], key=f"color_{group_data['id']}", help="Color of the structure.")
     group_data['zoom'] = st.slider("Zoom", 1.0, 5.0, group_data.get('zoom', 1.0), 0.1, key=f"zoom_{group_data['id']}", help="Adjust zoom level for the preview.")

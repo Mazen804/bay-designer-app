@@ -250,7 +250,7 @@ def create_editable_powerpoint(bay_groups):
         # --- Define Drawing Area and Scale on Slide ---
         canvas_left, canvas_top, canvas_width, canvas_height = Inches(1.5), Inches(1), Inches(7), Inches(5.5)
         total_group_width = (num_bays * bay_width) + (2 * side_panel_thickness)  # Use actual thickness for calculations
-        scale = min(max(min(canvas_width / total_group_width, canvas_height / total_height), 0.05), 1.0)  # Ensure reasonable scale
+        scale = min(max(min(canvas_width / total_group_width, canvas_height / total_height), 0.1), 1.0)  # Increased minimum scale to 0.1
 
         def pt_to_emu(points):
             return int(points * 12700)
@@ -258,7 +258,7 @@ def create_editable_powerpoint(bay_groups):
         def add_shape(left_mm, top_mm, width_mm, height_mm, color_hex):
             if left_mm < 0 or top_mm < 0 or width_mm <= 0 or height_mm <= 0 or scale <= 0:
                 st.error(f"Invalid shape parameters: left={left_mm}, top={top_mm}, width={width_mm}, height={height_mm}, scale={scale}")
-                return None
+                return slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, canvas_left, canvas_top, Inches(0.1), Inches(0.1))  # Fallback shape
             left = canvas_left + left_mm * scale
             top = canvas_top + (top_mm) * scale  # Bottom-up alignment
             width = max(width_mm * scale, Inches(0.05))
@@ -298,11 +298,10 @@ def create_editable_powerpoint(bay_groups):
 
         # --- Draw Structure ---
         structure_height = total_height - ground_clearance
-        if add_shape(0, 0, visual_side_panel_thickness, total_height, color_hex) is None: continue
+        shape = add_shape(0, 0, visual_side_panel_thickness, total_height, color_hex)
         current_x_mm = visual_side_panel_thickness
         if current_x_mm > total_group_width:
             st.error(f"current_x_mm {current_x_mm} exceeds total_group_width {total_group_width}")
-            continue
 
         for bay_idx in range(num_bays):
             net_width_per_bay = bay_width - 2 * side_panel_thickness  # Account for both side panels
@@ -313,7 +312,9 @@ def create_editable_powerpoint(bay_groups):
             if num_cols > 1:
                 for i in range(1, num_cols):
                     split_x_mm = bin_start_x_mm + (i * bin_width) + ((i-1) * bin_split_thickness)
-                    if split_x_mm > total_group_width or add_shape(split_x_mm, ground_clearance, visual_bin_split_thickness, structure_height, color_hex) is None: continue
+                    if split_x_mm > total_group_width:
+                        st.error(f"split_x_mm {split_x_mm} exceeds total_group_width {total_group_width}")
+                    add_shape(split_x_mm, ground_clearance, visual_bin_split_thickness, structure_height, color_hex)
             
             # Add inner bin width dimensions
             for i in range(num_cols):
@@ -325,18 +326,16 @@ def create_editable_powerpoint(bay_groups):
             current_x_mm += bay_width
             if current_x_mm > total_group_width:
                 st.error(f"current_x_mm {current_x_mm} exceeds total_group_width {total_group_width} after bay {bay_idx}")
-                break
 
-        if add_shape(current_x_mm, 0, visual_side_panel_thickness, total_height, color_hex) is None: continue
+        add_shape(current_x_mm, 0, visual_side_panel_thickness, total_height, color_hex)
 
         current_y_mm = ground_clearance
         if current_y_mm > total_height:
             st.error(f"current_y_mm {current_y_mm} exceeds total_height {total_height}")
-            continue
 
         for i in range(num_rows):
             shelf_bottom_y = current_y_mm
-            if add_shape(0, shelf_bottom_y, total_group_width, visual_shelf_thickness, color_hex) is None: continue
+            add_shape(0, shelf_bottom_y, total_group_width, visual_shelf_thickness, color_hex)
             shelf_top_y = shelf_bottom_y + shelf_thickness  # Use actual thickness for positioning
             
             if i < len(bin_heights):
@@ -356,10 +355,9 @@ def create_editable_powerpoint(bay_groups):
                 current_y_mm += shelf_thickness + net_bin_h
                 if current_y_mm > total_height:
                     st.error(f"current_y_mm {current_y_mm} exceeds total_height {total_height} at row {i}")
-                    break
 
         if has_top_cap:
-            if add_shape(0, total_height - visual_shelf_thickness, total_group_width, visual_shelf_thickness, color_hex) is None: continue
+            add_shape(0, total_height - visual_shelf_thickness, total_group_width, visual_shelf_thickness, color_hex)
 
         # Add outer dimensions
         total_w_y = canvas_top + canvas_height + pt_to_emu(20)
@@ -373,7 +371,6 @@ def create_editable_powerpoint(bay_groups):
     ppt_buf.seek(0)  # Ensure cursor is at start
     if ppt_buf.getbuffer().nbytes == 0:
         st.error("Generated PPTX file is empty. Please check configuration and try again.")
-        return None
     return ppt_buf
 
 # --- Initialize Session State ---

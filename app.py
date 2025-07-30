@@ -2,14 +2,12 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import io
-import os
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.enum.shapes import MSO_SHAPE
 import uuid
-import tempfile
 
 # --- Page Configuration ---
 st.set_page_config(layout="wide", page_title="Storage Bay Designer")
@@ -252,16 +250,19 @@ def create_editable_powerpoint(bay_groups):
         # --- Define Drawing Area and Scale on Slide ---
         canvas_left, canvas_top, canvas_width, canvas_height = Inches(1.5), Inches(1), Inches(7), Inches(5.5)
         total_group_width = (num_bays * bay_width) + (2 * side_panel_thickness)  # Use actual thickness for calculations
-        scale = min(canvas_width / (total_group_width + 400), canvas_height / (total_height + 200))
+        scale = min(max(canvas_width / (total_group_width + 400), 0.01), 1.0)  # Ensure scale is reasonable
 
         def pt_to_emu(points):
             return int(points * 12700)
 
         def add_shape(left_mm, top_mm, width_mm, height_mm, color_hex):
+            if left_mm < 0 or top_mm < 0 or width_mm <= 0 or height_mm <= 0 or scale <= 0:
+                st.error(f"Invalid shape parameters: left={left_mm}, top={top_mm}, width={width_mm}, height={height_mm}, scale={scale}")
+                return None
             left = canvas_left + left_mm * scale
             top = canvas_top + (total_height - top_mm - height_mm) * scale
-            width = max(width_mm * scale, Inches(0.02))  # Ensure minimum width
-            height = max(height_mm * scale, Inches(0.02))  # Ensure minimum height
+            width = max(width_mm * scale, Inches(0.02))
+            height = max(height_mm * scale, Inches(0.02))
             shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, height)
             shape.fill.solid()
             shape.fill.fore_color.rgb = RGBColor(*hex_to_rgb(color_hex))
@@ -269,6 +270,9 @@ def create_editable_powerpoint(bay_groups):
             return shape
         
         def add_dimension(start_x, start_y, end_x, end_y, text, is_vertical=False):
+            if start_x >= end_x or start_y >= end_y or scale <= 0:
+                st.error(f"Invalid dimension parameters: start_x={start_x}, start_y={start_y}, end_x={end_x}, end_y={end_y}, scale={scale}")
+                return
             line = slide.shapes.add_connector(1, start_x, start_y, end_x, end_y)
             line.line.fill.solid()
             line.line.fill.fore_color.rgb = RGBColor(0, 0, 0)
@@ -293,7 +297,7 @@ def create_editable_powerpoint(bay_groups):
 
         # --- Draw Structure ---
         structure_height = total_height - ground_clearance
-        add_shape(0, 0, visual_side_panel_thickness, total_height, color_hex)
+        if add_shape(0, 0, visual_side_panel_thickness, total_height, color_hex) is None: continue
         current_x_mm = visual_side_panel_thickness
 
         for bay_idx in range(num_bays):
@@ -305,7 +309,7 @@ def create_editable_powerpoint(bay_groups):
             if num_cols > 1:
                 for i in range(1, num_cols):
                     split_x_mm = bin_start_x_mm + (i * bin_width) + ((i-1) * bin_split_thickness)
-                    add_shape(split_x_mm, ground_clearance, visual_bin_split_thickness, structure_height, color_hex)
+                    if add_shape(split_x_mm, ground_clearance, visual_bin_split_thickness, structure_height, color_hex) is None: continue
             
             for i in range(num_cols):
                 dim_start_x = canvas_left + (bin_start_x_mm + i * (bin_width + bin_split_thickness)) * scale
@@ -315,12 +319,12 @@ def create_editable_powerpoint(bay_groups):
 
             current_x_mm += bay_width
 
-        add_shape(current_x_mm, 0, visual_side_panel_thickness, total_height, color_hex)
+        if add_shape(current_x_mm, 0, visual_side_panel_thickness, total_height, color_hex) is None: continue
 
         current_y_mm = ground_clearance
         for i in range(num_rows):
             shelf_bottom_y = current_y_mm
-            add_shape(0, shelf_bottom_y, total_group_width, visual_shelf_thickness, color_hex)
+            if add_shape(0, shelf_bottom_y, total_group_width, visual_shelf_thickness, color_hex) is None: continue
             shelf_top_y = shelf_bottom_y + shelf_thickness  # Use actual thickness for positioning
             
             if i < len(bin_heights):
@@ -340,7 +344,7 @@ def create_editable_powerpoint(bay_groups):
                 current_y_mm += shelf_thickness + net_bin_h
 
         if has_top_cap:
-            add_shape(0, total_height - visual_shelf_thickness, total_group_width, visual_shelf_thickness, color_hex)
+            if add_shape(0, total_height - visual_shelf_thickness, total_group_width, visual_shelf_thickness, color_hex) is None: continue
 
         total_w_y = canvas_top + canvas_height + pt_to_emu(20)
         add_dimension(canvas_left, total_w_y, canvas_left + total_group_width * scale, total_w_y, f"Total Width: {total_group_width:.0f} mm")
@@ -348,14 +352,12 @@ def create_editable_powerpoint(bay_groups):
         total_h_x = canvas_left - pt_to_emu(40)
         add_dimension(total_h_x, canvas_top, total_h_x, canvas_top + total_height * scale, f"Total Height: {total_height:.0f} mm", is_vertical=True)
 
-    # Save to temporary file for validation
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pptx") as tmp_file:
-        prs.save(tmp_file.name)
-        tmp_file.close()
-        with open(tmp_file.name, 'rb') as f:
-            ppt_buf = io.BytesIO(f.read())
-        os.unlink(tmp_file.name)  # Clean up temporary file
-    ppt_buf.seek(0)
+    ppt_buf = io.BytesIO()
+    prs.save(ppt_buf)
+    ppt_buf.seek(0)  # Ensure cursor is at start
+    if ppt_buf.getbuffer().nbytes == 0:
+        st.error("Generated PPTX file is empty. Please check configuration and try again.")
+        return None
     return ppt_buf
 
 # --- Initialize Session State ---
@@ -552,10 +554,13 @@ if st.sidebar.button("Generate PPTX", help="Generate a PowerPoint file with all 
     
     if not has_errors:
         ppt_buffer = create_editable_powerpoint(st.session_state.bay_groups)
-        download_button_placeholder.download_button(
-            label="Download Now",
-            data=ppt_buffer,
-            file_name="all_bay_designs.pptx",
-            mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            help="Download the PowerPoint file containing all bay designs."
-        )
+        if ppt_buffer is not None:
+            download_button_placeholder.download_button(
+                label="Download Now",
+                data=ppt_buffer.getvalue(),  # Use getvalue() to ensure full buffer content
+                file_name="all_bay_designs.pptx",
+                mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                help="Download the PowerPoint file containing all bay designs."
+            )
+        else:
+            st.error("Failed to generate PPTX file. Please check the Streamlit logs for details.")

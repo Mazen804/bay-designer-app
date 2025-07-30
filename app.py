@@ -250,7 +250,7 @@ def create_editable_powerpoint(bay_groups):
         # --- Define Drawing Area and Scale on Slide ---
         canvas_left, canvas_top, canvas_width, canvas_height = Inches(1.5), Inches(1), Inches(7), Inches(5.5)
         total_group_width = (num_bays * bay_width) + (2 * side_panel_thickness)  # Use actual thickness for calculations
-        scale = min(max(canvas_width / (total_group_width + 400), 0.01), 1.0)  # Ensure scale is reasonable
+        scale = min(max(min(canvas_width / total_group_width, canvas_height / total_height), 0.05), 1.0)  # Ensure reasonable scale
 
         def pt_to_emu(points):
             return int(points * 12700)
@@ -260,13 +260,14 @@ def create_editable_powerpoint(bay_groups):
                 st.error(f"Invalid shape parameters: left={left_mm}, top={top_mm}, width={width_mm}, height={height_mm}, scale={scale}")
                 return None
             left = canvas_left + left_mm * scale
-            top = canvas_top + (total_height - top_mm - height_mm) * scale
-            width = max(width_mm * scale, Inches(0.02))
-            height = max(height_mm * scale, Inches(0.02))
+            top = canvas_top + (top_mm) * scale  # Bottom-up alignment
+            width = max(width_mm * scale, Inches(0.05))
+            height = max(height_mm * scale, Inches(0.05))
             shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, height)
             shape.fill.solid()
             shape.fill.fore_color.rgb = RGBColor(*hex_to_rgb(color_hex))
-            shape.line.fill.background()
+            shape.line.color.rgb = RGBColor(0, 0, 0)  # Add black border for visibility
+            shape.line.width = Pt(0.5)
             return shape
         
         def add_dimension(start_x, start_y, end_x, end_y, text, is_vertical=False):
@@ -299,6 +300,9 @@ def create_editable_powerpoint(bay_groups):
         structure_height = total_height - ground_clearance
         if add_shape(0, 0, visual_side_panel_thickness, total_height, color_hex) is None: continue
         current_x_mm = visual_side_panel_thickness
+        if current_x_mm > total_group_width:
+            st.error(f"current_x_mm {current_x_mm} exceeds total_group_width {total_group_width}")
+            continue
 
         for bay_idx in range(num_bays):
             net_width_per_bay = bay_width - 2 * side_panel_thickness  # Account for both side panels
@@ -309,7 +313,7 @@ def create_editable_powerpoint(bay_groups):
             if num_cols > 1:
                 for i in range(1, num_cols):
                     split_x_mm = bin_start_x_mm + (i * bin_width) + ((i-1) * bin_split_thickness)
-                    if add_shape(split_x_mm, ground_clearance, visual_bin_split_thickness, structure_height, color_hex) is None: continue
+                    if split_x_mm > total_group_width or add_shape(split_x_mm, ground_clearance, visual_bin_split_thickness, structure_height, color_hex) is None: continue
             
             for i in range(num_cols):
                 dim_start_x = canvas_left + (bin_start_x_mm + i * (bin_width + bin_split_thickness)) * scale
@@ -318,10 +322,17 @@ def create_editable_powerpoint(bay_groups):
                 add_dimension(dim_start_x, dim_y, dim_end_x, dim_y, f"{bin_width:.1f}")
 
             current_x_mm += bay_width
+            if current_x_mm > total_group_width:
+                st.error(f"current_x_mm {current_x_mm} exceeds total_group_width {total_group_width} after bay {bay_idx}")
+                break
 
         if add_shape(current_x_mm, 0, visual_side_panel_thickness, total_height, color_hex) is None: continue
 
         current_y_mm = ground_clearance
+        if current_y_mm > total_height:
+            st.error(f"current_y_mm {current_y_mm} exceeds total_height {total_height}")
+            continue
+
         for i in range(num_rows):
             shelf_bottom_y = current_y_mm
             if add_shape(0, shelf_bottom_y, total_group_width, visual_shelf_thickness, color_hex) is None: continue
@@ -331,17 +342,20 @@ def create_editable_powerpoint(bay_groups):
                 net_bin_h = bin_heights[i]
                 pitch_h = net_bin_h + shelf_thickness
 
-                dim_start_y = canvas_top + (total_height - (shelf_top_y + net_bin_h)) * scale
-                dim_end_y = canvas_top + (total_height - shelf_top_y) * scale
+                dim_start_y = canvas_top + (shelf_bottom_y) * scale
+                dim_end_y = canvas_top + (shelf_bottom_y + net_bin_h) * scale
                 dim_x = canvas_left + (total_group_width + 50) * scale
                 add_dimension(dim_x, dim_start_y, dim_x, dim_end_y, f"{net_bin_h:.1f}", is_vertical=True)
                 
-                pitch_dim_start_y = canvas_top + (total_height - (shelf_bottom_y + pitch_h)) * scale
-                pitch_dim_end_y = canvas_top + (total_height - shelf_bottom_y) * scale
+                pitch_dim_start_y = canvas_top + (shelf_bottom_y) * scale
+                pitch_dim_end_y = canvas_top + (shelf_bottom_y + pitch_h) * scale
                 pitch_dim_x = canvas_left + (total_group_width + 150) * scale
                 add_dimension(pitch_dim_x, pitch_dim_start_y, pitch_dim_x, pitch_dim_end_y, f"{pitch_h:.1f}", is_vertical=True)
 
                 current_y_mm += shelf_thickness + net_bin_h
+                if current_y_mm > total_height:
+                    st.error(f"current_y_mm {current_y_mm} exceeds total_height {total_height} at row {i}")
+                    break
 
         if has_top_cap:
             if add_shape(0, total_height - visual_shelf_thickness, total_group_width, visual_shelf_thickness, color_hex) is None: continue

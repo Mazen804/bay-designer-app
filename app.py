@@ -91,8 +91,8 @@ def draw_bay_group(params):
 
     # --- Draw Side Panels ---
     def draw_side_panels():
-        ax.add_patch(patches.Rectangle((-visual_side_panel_thickness, 0), visual_side_panel_thickness, total_height, facecolor=color))
-        ax.add_patch(patches.Rectangle((core_width, 0), visual_side_panel_thickness, total_height, facecolor=color))
+        ax.add_patch(patches.Rectangle((-visual_side_panel_thickness, 0), visual_side_panel_thickness, total_height, facecolor='none', edgecolor=color, lw=1))
+        ax.add_patch(patches.Rectangle((core_width, 0), visual_side_panel_thickness, total_height, facecolor='none', edgecolor=color, lw=1))
 
     # --- Draw Bays ---
     def draw_bays():
@@ -106,7 +106,7 @@ def draw_bay_group(params):
             if num_cols > 1:
                 for i in range(1, num_cols):
                     split_x = bin_start_x + (i * bin_width) + ((i-1) * bin_split_thickness)
-                    ax.add_patch(patches.Rectangle((split_x, ground_clearance), visual_bin_split_thickness, structure_height, facecolor=color))
+                    ax.add_patch(patches.Rectangle((split_x, ground_clearance), visual_bin_split_thickness, structure_height, facecolor='none', edgecolor=color, lw=1))
             
             if bay_idx < num_bays - 1:
                 divider_x = current_x + bay_width
@@ -121,7 +121,7 @@ def draw_bay_group(params):
 
         for i in range(num_rows):
             shelf_bottom_y = current_y
-            ax.add_patch(patches.Rectangle((-visual_side_panel_thickness, shelf_bottom_y), total_group_width, visual_shelf_thickness, facecolor=color))
+            ax.add_patch(patches.Rectangle((-visual_side_panel_thickness, shelf_bottom_y), total_group_width, visual_shelf_thickness, facecolor='none', edgecolor=color, lw=1))
             shelf_top_y = shelf_bottom_y + shelf_thickness  # Use actual thickness for positioning
             
             if i < len(bin_heights):
@@ -141,7 +141,7 @@ def draw_bay_group(params):
                 current_y = bin_top_y
 
         if has_top_cap:
-            ax.add_patch(patches.Rectangle((-visual_side_panel_thickness, total_height - visual_shelf_thickness), total_group_width, visual_shelf_thickness, facecolor=color))
+            ax.add_patch(patches.Rectangle((-visual_side_panel_thickness, total_height - visual_shelf_thickness), total_group_width, visual_shelf_thickness, facecolor='none', edgecolor=color, lw=1))
 
     # --- Draw Main Dimensions ---
     def draw_main_dimensions():
@@ -264,10 +264,10 @@ def create_editable_powerpoint(bay_groups):
             width = max(width_mm * scale, Inches(0.05))
             height = max(height_mm * scale, Inches(0.05))
             shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, height)
-            shape.fill.solid()
-            shape.fill.fore_color.rgb = RGBColor(*hex_to_rgb(color_hex))
-            shape.line.color.rgb = RGBColor(0, 0, 0)  # Add black border for visibility
-            shape.line.width = Pt(0.5)
+            shape.fill.solid()  # Set to no fill
+            shape.fill.fore_color.rgb = RGBColor(255, 255, 255)  # White fill to simulate no fill
+            shape.line.color.rgb = RGBColor(*hex_to_rgb(color_hex))  # Use selected color for border
+            shape.line.width = Pt(0.5)  # Thin border to mimic sticks
             return shape
         
         def add_dimension(start_x, start_y, end_x, end_y, text, is_vertical=False):
@@ -315,11 +315,12 @@ def create_editable_powerpoint(bay_groups):
                     split_x_mm = bin_start_x_mm + (i * bin_width) + ((i-1) * bin_split_thickness)
                     if split_x_mm > total_group_width or add_shape(split_x_mm, ground_clearance, visual_bin_split_thickness, structure_height, color_hex) is None: continue
             
+            # Add inner bin width dimensions
             for i in range(num_cols):
                 dim_start_x = canvas_left + (bin_start_x_mm + i * (bin_width + bin_split_thickness)) * scale
                 dim_end_x = dim_start_x + (bin_width * scale)
                 dim_y = canvas_top - pt_to_emu(20)
-                add_dimension(dim_start_x, dim_y, dim_end_x, dim_y, f"{bin_width:.1f}")
+                add_dimension(dim_start_x, dim_y, dim_end_x, dim_y, f"{bin_width:.1f} mm")
 
             current_x_mm += bay_width
             if current_x_mm > total_group_width:
@@ -342,15 +343,15 @@ def create_editable_powerpoint(bay_groups):
                 net_bin_h = bin_heights[i]
                 pitch_h = net_bin_h + shelf_thickness
 
-                dim_start_y = canvas_top + (shelf_bottom_y) * scale
-                dim_end_y = canvas_top + (shelf_bottom_y + net_bin_h) * scale
+                dim_start_y = canvas_top + (shelf_top_y) * scale
+                dim_end_y = canvas_top + (shelf_top_y + net_bin_h) * scale
                 dim_x = canvas_left + (total_group_width + 50) * scale
-                add_dimension(dim_x, dim_start_y, dim_x, dim_end_y, f"{net_bin_h:.1f}", is_vertical=True)
+                add_dimension(dim_x, dim_start_y, dim_x, dim_end_y, f"{net_bin_h:.1f} mm", is_vertical=True)
                 
                 pitch_dim_start_y = canvas_top + (shelf_bottom_y) * scale
                 pitch_dim_end_y = canvas_top + (shelf_bottom_y + pitch_h) * scale
                 pitch_dim_x = canvas_left + (total_group_width + 150) * scale
-                add_dimension(pitch_dim_x, pitch_dim_start_y, pitch_dim_x, pitch_dim_end_y, f"{pitch_h:.1f}", is_vertical=True)
+                add_dimension(pitch_dim_x, pitch_dim_start_y, pitch_dim_x, pitch_dim_end_y, f"{pitch_h:.1f} mm", is_vertical=True)
 
                 current_y_mm += shelf_thickness + net_bin_h
                 if current_y_mm > total_height:
@@ -360,6 +361,7 @@ def create_editable_powerpoint(bay_groups):
         if has_top_cap:
             if add_shape(0, total_height - visual_shelf_thickness, total_group_width, visual_shelf_thickness, color_hex) is None: continue
 
+        # Add outer dimensions
         total_w_y = canvas_top + canvas_height + pt_to_emu(20)
         add_dimension(canvas_left, total_w_y, canvas_left + total_group_width * scale, total_w_y, f"Total Width: {total_group_width:.0f} mm")
         
